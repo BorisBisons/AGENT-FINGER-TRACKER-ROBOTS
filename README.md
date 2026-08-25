@@ -15,7 +15,8 @@ pipeline with the mouse.
 | --- | --- |
 | Open palm | ROBOT mode; palm orientation/position drives the robot |
 | Closed fist | Transform to VEHICLE mode (~0.6 s articulated fold, reversible) |
-| Peace sign (2 fingers) | Freeze / hold pose |
+| Peace sign (2 fingers, thumb tucked) | Freeze / hold pose |
+| Curl individual fingers | Puppet the robot's limbs: index/middle = arms, ring/pinky = legs, thumb = head nod |
 | Fast horizontal swipe | Full 360° spin that completes on its own momentum |
 | Fast vertical flick | 180° flip |
 | Hand leaves frame | Robot eases into an idle spin — never snaps |
@@ -32,12 +33,19 @@ trend) → calibration offset → **gain amplification** (1–5×, default 2.5×
 gesture impulses → **under-damped spring** on unwrapped scalar axes (momentum
 overshoot, tunable stiffness/damping) → robot transform.
 
-All of it is tunable live from the HUD sliders: gain, prediction lead,
-smoothing, spring stiffness, overshoot.
+Each finger's continuous curl (0 = extended, 1 = curled) runs through the same
+smoothing → prediction → gain → spring chain and drives a limb directly, so the
+fingers puppet the robot as much as the palm steers it (FINGER GAIN slider,
+0–3×).
+
+All of it is tunable live from the HUD sliders: gain, finger gain, prediction
+lead, smoothing, spring stiffness, overshoot.
 
 ## Tech
 
 - [MediaPipe Hands](https://www.npmjs.com/package/@mediapipe/hands) + camera_utils (CDN)
 - [Three.js](https://threejs.org) r128 (CDN)
-- Vanilla JS, zero assets — the robot, vehicle, and scene are all procedural
-  primitives. Original toy design, not branded IP.
+- Vanilla JS, zero assets — the robot, vehicle, scene, and the Italian-racing
+  style chest badge (yellow scudetto, tricolore band, rearing robo-horse,
+  "MH" mark — an original emblem, not the Ferrari trademark) are all drawn
+  procedurally. Original toy design, not branded IP.

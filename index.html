@@ -126,7 +126,7 @@
 <canvas id="scene"></canvas>
 
 <div id="hud" class="panel">
-  <h1>MECHA&#8209;HAND <span class="v">v1.0</span></h1>
+  <h1>MECHA&#8209;HAND <span class="v">v1.1</span></h1>
 
   <div class="row"><span class="k">MODE</span><span class="v"><span id="rMode" class="mode-pill m-idle">IDLE</span></span></div>
   <div class="row"><span class="k">GESTURE</span><span class="v" id="rGesture">—</span></div>
@@ -134,12 +134,17 @@
   <div class="row"><span class="k">YAW / PITCH / ROLL</span><span class="v" id="rYpr">0° 0° 0°</span></div>
   <div class="row"><span class="k">ROBOT YAW</span><span class="v" id="rRobotYaw">0°</span></div>
   <div class="row"><span class="k">LEAD</span><span class="v" id="rLead">+0°</span></div>
+  <div class="row"><span class="k">FINGERS</span><span class="v" id="rFingers" style="letter-spacing:3px">▁▁▁▁▁</span></div>
 
   <div class="sep"></div>
 
   <div class="slider">
     <label>GAIN <b><span id="vGain">2.5</span>×</b></label>
     <input type="range" id="sGain" min="1" max="5" step="0.1" value="2.5" />
+  </div>
+  <div class="slider">
+    <label>FINGER GAIN <b><span id="vFGain">1.6</span>×</b></label>
+    <input type="range" id="sFGain" min="0" max="3" step="0.1" value="1.6" />
   </div>
   <div class="slider">
     <label>PREDICTION LEAD <b><span id="vLead">160</span> ms</b></label>
@@ -180,6 +185,7 @@
   <div><b>OPEN PALM</b> <span class="g">→</span> robot mode</div>
   <div><b>FIST</b> <span class="g">→</span> transform to vehicle</div>
   <div><b>PEACE (2 FINGERS)</b> <span class="g">→</span> freeze pose</div>
+  <div><b>CURL FINGERS</b> <span class="g">→</span> puppet arms/legs/head</div>
   <div><b>FAST SWIPE ↔</b> <span class="g">→</span> 360° spin</div>
   <div><b>FAST FLICK ↕</b> <span class="g">→</span> 180° flip</div>
   <div><b>C</b> calibrate · <b>T</b> transform · <b>H</b> hide HUD</div>
@@ -302,6 +308,7 @@ const velWin = new VelWindow();
 /* ------------------------------- config -------------------------------- */
 const P = {
   gain: 2.5,
+  fingerGain: 1.6,
   leadMs: 160,
   smoothing: 0.45,
   stiffness: 110,
@@ -337,6 +344,10 @@ const S = {
 
 /* channels */
 const chYaw = new Channel(0), chPitch = new Channel(0), chRoll = new Channel(0);
+const chFinger = [];            // thumb, index, middle, ring, pinky
+for (let i = 0; i < 5; i++) chFinger.push(new Channel(0.03));
+const fingerSpring = [];        // spring state per finger -> limb offset
+for (let i = 0; i < 5; i++) fingerSpring.push({ x: 0, v: 0 });
 const chX = new Channel(0.004), chY = new Channel(0.004), chZ = new Channel(0.006);
 const lmFilters = [];
 for (let i = 0; i < 21; i++) lmFilters.push([new OneEuro(1.0, 0.05), new OneEuro(1.0, 0.05), new OneEuro(1.4, 0.05)]);
@@ -433,10 +444,74 @@ const body = new THREE.Group();          // transform pose root
 root.add(bob); bob.add(body);
 scene.add(root);
 
+/* ---- scudetto chest badge (original, Italian-racing inspired): yellow
+   shield, tricolore band, black rearing robo-horse, "MH" mark. Drawn on a
+   canvas so the app stays zero-asset. ---- */
+function makeBadgeTexture() {
+  const c = document.createElement("canvas");
+  c.width = 256; c.height = 320;
+  const g = c.getContext("2d");
+
+  const shield = () => {
+    g.beginPath();
+    g.moveTo(30, 14); g.lineTo(226, 14);
+    g.lineTo(224, 150);
+    g.quadraticCurveTo(218, 250, 128, 306);
+    g.quadraticCurveTo(38, 250, 32, 150);
+    g.closePath();
+  };
+
+  g.save();
+  shield(); g.clip();
+  g.fillStyle = "#ffce00"; g.fillRect(0, 0, 256, 320);           // giallo
+  g.fillStyle = "#009246"; g.fillRect(0, 14, 86, 30);            // tricolore
+  g.fillStyle = "#f4f4f4"; g.fillRect(86, 14, 84, 30);
+  g.fillStyle = "#ce2b37"; g.fillRect(170, 14, 86, 30);
+
+  // angular rearing robo-horse, facing left, body rising on the diagonal
+  g.fillStyle = "#141414";
+  const poly = pts => { g.beginPath(); g.moveTo(pts[0][0], pts[0][1]);
+    for (let i = 1; i < pts.length; i++) g.lineTo(pts[i][0], pts[i][1]); g.closePath(); g.fill(); };
+  // body + arched neck + head (muzzle low-left, ears up)
+  poly([[56,76],[68,56],[80,44],[90,34],[96,44],[104,36],[112,48],[118,60],
+        [132,92],[148,124],[172,146],[184,144],[186,170],[170,184],[144,170],
+        [120,150],[112,122],[104,98],[96,78],[86,66],[76,72],[60,84]]);
+  // bent forelegs pawing the air
+  poly([[112,142],[92,162],[66,150],[64,160],[92,176],[116,156]]);
+  poly([[124,158],[104,180],[78,170],[76,180],[104,194],[128,172]]);
+  // hind legs bearing the rear
+  poly([[168,180],[176,208],[170,236],[166,252],[184,252],[190,210],[188,168]]);
+  poly([[148,176],[154,206],[146,242],[162,244],[166,208],[168,174]]);
+  // tail
+  poly([[184,144],[206,152],[214,182],[202,172],[198,196],[188,164]]);
+  // "MH" mark
+  g.fillStyle = "#141414";
+  g.font = "bold 38px Georgia, 'Times New Roman', serif";
+  g.textAlign = "center";
+  g.fillText("MH", 128, 284);
+  g.restore();
+
+  shield();
+  g.lineWidth = 9; g.strokeStyle = "#141414"; g.stroke();
+
+  const tex = new THREE.CanvasTexture(c);
+  if ("sRGBEncoding" in THREE) tex.encoding = THREE.sRGBEncoding;
+  tex.anisotropy = 4;
+  return tex;
+}
+const badgeTex = makeBadgeTexture();
+const badgeMat = new THREE.MeshStandardMaterial({
+  map: badgeTex, roughness: 0.35, metalness: 0.15,
+  emissive: 0xffffff, emissiveMap: badgeTex, emissiveIntensity: 0.22,
+});
+
 /* torso */
 body.add(box(1.15, 1.25, 0.62, MAT.hull, 0, 0.15, 0));
-body.add(box(0.72, 0.5, 0.1, MAT.gold, 0, 0.42, 0.33));       // chest panel
-body.add(box(0.2, 0.2, 0.08, MAT.glow, 0, 0.42, 0.39));       // chest core
+body.add(box(0.72, 0.62, 0.1, MAT.gold, 0, 0.4, 0.33));       // chest plate
+const badge = new THREE.Mesh(new THREE.PlaneGeometry(0.44, 0.55), badgeMat);
+badge.position.set(0, 0.4, 0.386);
+body.add(badge);                                              // scudetto badge
+body.add(box(0.2, 0.14, 0.08, MAT.glow, 0, 0.02, 0.32));      // belly core
 body.add(box(1.32, 0.26, 0.5, MAT.hull2, 0, 0.72, 0));        // collar / shoulders yoke
 body.add(box(1.0, 0.34, 0.56, MAT.dark, 0, -0.56, 0));        // hip block
 body.add(box(1.2, 0.08, 0.62, MAT.glowB, 0, -0.2, 0));        // waist light strip
@@ -564,7 +639,7 @@ const _e = new THREE.Euler();
 
 function springAxis(cur, vel, target, k, c, dt) {
   vel += (target - cur) * k * dt;       // semi-implicit Euler: stable + bouncy
-  vel -= vel * Math.min(1, c * dt);
+  vel *= Math.exp(-c * dt);             // exponential damping: stable at any fps
   return [cur + vel * dt, vel];
 }
 
@@ -623,10 +698,31 @@ function fingerStates(pts) {
 function classify(f) {
   const n = f.reduce((a, b) => a + b, 0);
   if (n >= 4) return "OPEN PALM";
-  if (n <= 1) return "FIST";
-  if (f[1] && f[2] && !f[3] && !f[4]) return "PEACE";
+  if (n === 0 || (n === 1 && f[0])) return "FIST";   // thumb alone still reads as fist
+  if (!f[0] && f[1] && f[2] && !f[3] && !f[4]) return "PEACE";  // thumb tucked
   if (f[1] && !f[2] && !f[3] && !f[4]) return "POINT";
   return "PARTIAL";
+}
+
+/* continuous per-finger curl, 0 = extended .. 1 = fully curled — this is the
+   puppet input: each finger drives a robot limb through the same
+   amplify -> predict -> spring pipeline as the palm */
+function fingerCurls(pts) {
+  const w = pts[0];
+  const idx = [[2, 3, 4], [5, 6, 8], [9, 10, 12], [13, 14, 16], [17, 18, 20]];
+  const out = [];
+  for (let f = 0; f < 5; f++) {
+    if (f === 0) {
+      const spread = pts[4].distanceTo(pts[5]);
+      const palm = Math.max(1e-4, pts[0].distanceTo(pts[9]));
+      out.push(clamp((0.85 - spread / palm) / 0.4, 0, 1));
+    } else {
+      const [, pip, tip] = idx[f];
+      const e = pts[tip].distanceTo(w) / Math.max(1e-4, pts[pip].distanceTo(w));
+      out.push(clamp((1.3 - e) / 0.5, 0, 1));   // ~0 relaxed-open, 1 fully curled
+    }
+  }
+  return out;
 }
 
 /* palm orientation basis -> YXZ euler */
@@ -737,6 +833,7 @@ function onResults(res) {
   }
 
   const fingers = fingerStates(pts);
+  const curls = fingerCurls(pts);
   drawSkeleton(lms, fingers);
   const g = classify(fingers);
   if (g === S.gesture) S.gestureCount++;
@@ -773,6 +870,10 @@ function onResults(res) {
   }
 
   const alpha = lerp(0.9, 0.12, P.smoothing);
+  for (let i = 0; i < 5; i++) {
+    if (firstTouch) chFinger[i].reset(curls[i]);
+    chFinger[i].update(curls[i], dtT, alpha);
+  }
   chYaw.update(yawC, dtT, alpha);
   chPitch.update(o.pitch, dtT, alpha);
   chRoll.update(o.roll, dtT, alpha);
@@ -929,6 +1030,7 @@ function tick() {
 
   S.wheelSpin += (posVel.length() * 1.6 + rotSpeed() * 0.5 + 1.5 * S.transformT) * dt;
   applyTransformPose(S.transformT);
+  applyFingerPose(dt);
 
   // idle life: breathing bob + slow head sway when nothing is driving us
   const idleAmt = clamp((t - S.lastHandT - 0.3) / 1.0, 0, 1);
@@ -942,10 +1044,50 @@ function tick() {
   updateHud();
 }
 
+/* ---------------- finger puppet: curls -> limb articulation -------------
+   Runs after applyTransformPose so offsets stack on the base pose, and
+   fades out as the fold to vehicle progresses. Amplified + predicted like
+   the palm, sprung with the same stiffness so limbs feel just as eager.  */
+function applyFingerPose(dt) {
+  const t = nowSec();
+  const fresh = S.hasHand && !S.mouseMode && t - S.lastHandT < 0.35;
+  const k = P.stiffness * 1.25;
+  const c = 2 * P.damping * Math.sqrt(k);
+  const lead = P.leadMs / 1000;
+
+  for (let i = 0; i < 5; i++) {
+    const sp = fingerSpring[i];
+    let target;
+    if (fresh && !S.frozen) target = clamp(chFinger[i].predicted(lead) * P.fingerGain, 0, 1.12);
+    else if (fresh && S.frozen) target = sp.x;                 // hold
+    else target = 0;                                           // relax to idle
+    const n = dt > 1 / 45 ? 2 : 1;
+    for (let j = 0; j < n; j++) [sp.x, sp.v] = springAxis(sp.x, sp.v, target, k, c, dt / n);
+  }
+
+  const f = 1 - easeInOut(clamp(S.transformT, 0, 1));          // no puppet in vehicle
+  const [th, ix, md, rg, pk] = fingerSpring.map(sp => sp.x * f);
+
+  // thumb -> head nod + slight cock
+  headPivot.rotation.x += th * 0.6;
+  headPivot.rotation.z += th * 0.18;
+  // index -> right arm raise + elbow curl, middle -> left arm (mirror view)
+  armR.sh.rotation.x += -2.0 * ix;
+  armR.el.rotation.x += -1.7 * ix;
+  armL.sh.rotation.x += -2.0 * md;
+  armL.el.rotation.x += -1.7 * md;
+  // ring -> right leg march, pinky -> left leg
+  legR.hip.rotation.x += -1.15 * rg;
+  legR.kn.rotation.x += 1.5 * rg;
+  legL.hip.rotation.x += -1.15 * pk;
+  legL.kn.rotation.x += 1.5 * pk;
+}
+
 /* ================================= HUD ================================== */
 const el = id => document.getElementById(id);
 const rMode = el("rMode"), rGesture = el("rGesture"), rTrackFps = el("rTrackFps"),
-  rRenderFps = el("rRenderFps"), rYpr = el("rYpr"), rRobotYaw = el("rRobotYaw"), rLead = el("rLead");
+  rRenderFps = el("rRenderFps"), rYpr = el("rYpr"), rRobotYaw = el("rRobotYaw"),
+  rLead = el("rLead"), rFingers = el("rFingers");
 
 let hudAcc = 0;
 function updateHud() {
@@ -963,6 +1105,9 @@ function updateHud() {
   const ry = ((rot.y * DEG) % 360 + 360) % 360;
   rRobotYaw.textContent = `${ry.toFixed(0)}°`;
   rLead.textContent = `${S.leadDeg >= 0 ? "+" : ""}${S.leadDeg.toFixed(0)}°`;
+  const BLOCKS = "▁▂▃▅▆█";
+  rFingers.textContent = fingerSpring.map(sp =>
+    BLOCKS[clamp(Math.round(sp.x * 5), 0, 5)]).join("");
 }
 
 let toastTimer = null;
@@ -987,6 +1132,7 @@ function bindSlider(id, out, key, fmt) {
   apply();
 }
 bindSlider("sGain", "vGain", "gain", v => v.toFixed(1));
+bindSlider("sFGain", "vFGain", "fingerGain", v => v.toFixed(1));
 bindSlider("sLead", "vLead", "leadMs", v => v.toFixed(0));
 bindSlider("sSmooth", "vSmooth", "smoothing", v => v.toFixed(2));
 bindSlider("sStiff", "vStiff", "stiffness", v => v.toFixed(0));

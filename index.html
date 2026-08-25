@@ -1,0 +1,1092 @@
+<meta charset="utf-8" />
+<title>MECHA-HAND — Hand-Tracked Transforming Robot Toy</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+
+<style>
+  :root {
+    --bg: #06080f;
+    --panel: rgba(10, 16, 28, 0.82);
+    --line: rgba(0, 229, 255, 0.28);
+    --fg: #d7e6f5;
+    --dim: #6f8399;
+    --accent: #00e5ff;
+    --hot: #ff5a3d;
+    --good: #4dffa6;
+    --warn: #ffd23f;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; height: 100%; width: 100%;
+    background: var(--bg); color: var(--fg); overflow: hidden;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+    -webkit-user-select: none; user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #scene { position: fixed; inset: 0; display: block; }
+
+  .panel {
+    position: fixed;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    backdrop-filter: blur(9px);
+    -webkit-backdrop-filter: blur(9px);
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.55);
+  }
+
+  /* ---------- HUD ---------- */
+  #hud { top: 12px; left: 12px; width: 274px; padding: 10px 12px 12px; font-size: 11px; }
+  #hud h1 {
+    margin: 0 0 8px; font-size: 12px; letter-spacing: 2.4px; color: var(--accent);
+    font-weight: 700; display: flex; justify-content: space-between; align-items: center;
+  }
+  #hud h1 span.v { color: var(--dim); letter-spacing: 0; font-weight: 400; font-size: 9px; }
+  .row { display: flex; justify-content: space-between; gap: 8px; line-height: 1.7; }
+  .row .k { color: var(--dim); }
+  .row .v { color: var(--fg); font-variant-numeric: tabular-nums; }
+  .sep { height: 1px; background: var(--line); margin: 9px 0 8px; opacity: 0.7; }
+
+  .slider { margin: 9px 0 2px; }
+  .slider label { display: flex; justify-content: space-between; color: var(--dim); margin-bottom: 3px; }
+  .slider label b { color: var(--accent); font-weight: 600; font-variant-numeric: tabular-nums; }
+  input[type=range] {
+    -webkit-appearance: none; appearance: none; width: 100%; height: 3px;
+    background: rgba(255, 255, 255, 0.14); border-radius: 3px; outline: none; margin: 0;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none; width: 13px; height: 13px; border-radius: 50%;
+    background: var(--accent); cursor: pointer; box-shadow: 0 0 9px rgba(0, 229, 255, 0.8);
+  }
+  input[type=range]::-moz-range-thumb {
+    width: 13px; height: 13px; border: 0; border-radius: 50%;
+    background: var(--accent); cursor: pointer; box-shadow: 0 0 9px rgba(0, 229, 255, 0.8);
+  }
+
+  .btns { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+  button {
+    flex: 1 1 auto; min-width: 78px; cursor: pointer; font: inherit; font-size: 10px;
+    letter-spacing: 0.9px; padding: 7px 6px; color: var(--fg);
+    background: rgba(0, 229, 255, 0.09); border: 1px solid var(--line); border-radius: 6px;
+    transition: background 0.15s, color 0.15s;
+  }
+  button:hover { background: rgba(0, 229, 255, 0.22); }
+  button:active { background: rgba(0, 229, 255, 0.4); color: #04202a; }
+  button.on { background: var(--accent); color: #04202a; border-color: var(--accent); }
+
+  .mode-pill {
+    display: inline-block; padding: 1px 7px; border-radius: 20px; font-size: 10px;
+    letter-spacing: 1.2px; border: 1px solid currentColor;
+  }
+  .m-robot { color: var(--good); }
+  .m-vehicle { color: var(--warn); }
+  .m-idle { color: var(--dim); }
+
+  /* ---------- webcam PiP ---------- */
+  #pip { right: 12px; bottom: 12px; width: 232px; padding: 6px; }
+  #pipWrap { position: relative; width: 100%; aspect-ratio: 4 / 3; border-radius: 6px; overflow: hidden; background: #000; }
+  #pipWrap video, #pipWrap canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+  #pipWrap video { object-fit: cover; transform: scaleX(-1); opacity: 0.85; }
+  #pipLabel {
+    display: flex; justify-content: space-between; font-size: 9px; color: var(--dim);
+    letter-spacing: 1px; padding: 4px 2px 1px;
+  }
+  #pipLabel b { color: var(--accent); font-weight: 600; }
+
+  /* ---------- help ---------- */
+  #help { left: 12px; bottom: 12px; padding: 9px 12px; font-size: 10px; color: var(--dim); line-height: 1.85; max-width: 274px; }
+  #help b { color: var(--fg); font-weight: 600; }
+  #help .g { color: var(--accent); }
+
+  /* ---------- toast / status ---------- */
+  #toast {
+    position: fixed; top: 14px; left: 50%; transform: translateX(-50%);
+    padding: 9px 18px; font-size: 11px; letter-spacing: 1.4px; border-radius: 30px;
+    background: rgba(10, 16, 28, 0.9); border: 1px solid var(--line); color: var(--accent);
+    opacity: 0; transition: opacity 0.35s; pointer-events: none; white-space: nowrap;
+  }
+  #toast.show { opacity: 1; }
+
+  #boot {
+    position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+    flex-direction: column; gap: 14px; background: var(--bg); z-index: 50; text-align: center; padding: 24px;
+  }
+  #boot h2 { margin: 0; font-size: 15px; letter-spacing: 4px; color: var(--accent); font-weight: 700; }
+  #boot p { margin: 0; font-size: 11px; color: var(--dim); max-width: 430px; line-height: 1.9; }
+  #boot .err { color: var(--hot); }
+  #boot button { flex: 0 0 auto; min-width: 190px; padding: 10px 18px; font-size: 11px; }
+  .hidden { display: none !important; }
+
+  @media (max-width: 780px) {
+    #hud { width: 210px; font-size: 10px; padding: 8px 9px 9px; }
+    #pip { width: 150px; }
+    #help { display: none; }
+  }
+</style>
+
+<canvas id="scene"></canvas>
+
+<div id="hud" class="panel">
+  <h1>MECHA&#8209;HAND <span class="v">v1.0</span></h1>
+
+  <div class="row"><span class="k">MODE</span><span class="v"><span id="rMode" class="mode-pill m-idle">IDLE</span></span></div>
+  <div class="row"><span class="k">GESTURE</span><span class="v" id="rGesture">—</span></div>
+  <div class="row"><span class="k">TRACK / RENDER</span><span class="v"><span id="rTrackFps">0</span> / <span id="rRenderFps">0</span> fps</span></div>
+  <div class="row"><span class="k">YAW / PITCH / ROLL</span><span class="v" id="rYpr">0° 0° 0°</span></div>
+  <div class="row"><span class="k">ROBOT YAW</span><span class="v" id="rRobotYaw">0°</span></div>
+  <div class="row"><span class="k">LEAD</span><span class="v" id="rLead">+0°</span></div>
+
+  <div class="sep"></div>
+
+  <div class="slider">
+    <label>GAIN <b><span id="vGain">2.5</span>×</b></label>
+    <input type="range" id="sGain" min="1" max="5" step="0.1" value="2.5" />
+  </div>
+  <div class="slider">
+    <label>PREDICTION LEAD <b><span id="vLead">160</span> ms</b></label>
+    <input type="range" id="sLead" min="0" max="260" step="5" value="160" />
+  </div>
+  <div class="slider">
+    <label>SMOOTHING <b><span id="vSmooth">0.45</span></b></label>
+    <input type="range" id="sSmooth" min="0" max="0.95" step="0.01" value="0.45" />
+  </div>
+  <div class="slider">
+    <label>SPRING STIFFNESS <b><span id="vStiff">110</span></b></label>
+    <input type="range" id="sStiff" min="20" max="320" step="5" value="110" />
+  </div>
+  <div class="slider">
+    <label>OVERSHOOT <b><span id="vDamp">0.72</span> ζ</b></label>
+    <input type="range" id="sDamp" min="0.35" max="1.2" step="0.01" value="0.72" />
+  </div>
+
+  <div class="btns">
+    <button id="bCal">CALIBRATE</button>
+    <button id="bTransform">TRANSFORM</button>
+  </div>
+  <div class="btns">
+    <button id="bMouse">MOUSE MODE</button>
+    <button id="bReset">RESET</button>
+  </div>
+</div>
+
+<div id="pip" class="panel">
+  <div id="pipWrap">
+    <video id="cam" playsinline muted autoplay></video>
+    <canvas id="overlay"></canvas>
+  </div>
+  <div id="pipLabel"><span>TRACKER VIEW</span><b id="pipState">OFFLINE</b></div>
+</div>
+
+<div id="help" class="panel">
+  <div><b>OPEN PALM</b> <span class="g">→</span> robot mode</div>
+  <div><b>FIST</b> <span class="g">→</span> transform to vehicle</div>
+  <div><b>PEACE (2 FINGERS)</b> <span class="g">→</span> freeze pose</div>
+  <div><b>FAST SWIPE ↔</b> <span class="g">→</span> 360° spin</div>
+  <div><b>FAST FLICK ↕</b> <span class="g">→</span> 180° flip</div>
+  <div><b>C</b> calibrate · <b>T</b> transform · <b>H</b> hide HUD</div>
+</div>
+
+<div id="toast"></div>
+
+<div id="boot">
+  <h2>MECHA&#8209;HAND</h2>
+  <p id="bootMsg">
+    A hand-tracked transforming robot toy. Your webcam drives a low-poly mecha — amplified,
+    predicted and spring-loaded so the robot moves <b>faster than your hand</b>, not behind it.
+  </p>
+  <button id="bStart">ENABLE CAMERA &amp; START</button>
+  <button id="bStartMouse" style="min-width:190px">START WITHOUT CAMERA (MOUSE)</button>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/hands.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3.1675466862/camera_utils.js" crossorigin="anonymous"></script>
+
+<script>
+"use strict";
+
+/* =========================================================================
+   MECHA-HAND — hand-tracked transforming robot toy
+   Pipeline per frame:
+     landmarks -> One Euro Filter -> palm basis -> channels(yaw/pitch/roll/x/y/z)
+       -> deadzone -> Holt double-exponential smoothing (level + trend)
+       -> predictive lead (level + trend * leadSeconds)
+       -> calibration offset -> GAIN amplification (+ gesture impulses)
+       -> quaternion/vector spring with momentum overshoot -> robot transform
+   ========================================================================= */
+
+/* ------------------------------- utils --------------------------------- */
+const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
+const lerp = (a, b, t) => a + (b - a) * t;
+const DEG = 180 / Math.PI;
+const easeInOut = t => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+const nowSec = () => performance.now() / 1000;
+
+/* --------------------------- One Euro Filter ---------------------------- */
+class LowPass {
+  constructor() { this.y = null; this.s = null; }
+  filter(x, a) {
+    this.s = this.y === null ? x : a * x + (1 - a) * this.s;
+    this.y = x;
+    return this.s;
+  }
+  get hasLast() { return this.y !== null; }
+  reset() { this.y = null; this.s = null; }
+}
+class OneEuro {
+  // minCutoff low  -> heavy smoothing when still; beta -> lets fast motion through
+  constructor(minCutoff = 1.0, beta = 0.05, dCutoff = 1.0) {
+    this.minCutoff = minCutoff; this.beta = beta; this.dCutoff = dCutoff;
+    this.x = new LowPass(); this.dx = new LowPass(); this.tPrev = null;
+  }
+  alpha(cutoff, dt) {
+    const tau = 1 / (2 * Math.PI * cutoff);
+    return 1 / (1 + tau / dt);
+  }
+  filter(v, t) {
+    if (this.tPrev === null) { this.tPrev = t; this.x.filter(v, 1); return v; }
+    const dt = clamp(t - this.tPrev, 1 / 240, 1 / 5);
+    this.tPrev = t;
+    const dv = this.x.hasLast ? (v - this.x.y) / dt : 0;
+    const edv = this.dx.filter(dv, this.alpha(this.dCutoff, dt));
+    const cutoff = this.minCutoff + this.beta * Math.abs(edv);
+    return this.x.filter(v, this.alpha(cutoff, dt));
+  }
+  reset() { this.x.reset(); this.dx.reset(); this.tPrev = null; }
+}
+
+/* ----------- Channel: deadzone + Holt double-exponential predictor -------
+   Holt gives us a smoothed level AND a trend (velocity) for free — that trend
+   is the predictive lead. Constant-velocity extrapolation, no ML.            */
+class Channel {
+  constructor(deadzone = 0) {
+    this.deadzone = deadzone;
+    this.held = 0; this.level = 0; this.trend = 0; this.init = false;
+  }
+  reset(v) { this.held = v; this.level = v; this.trend = 0; this.init = true; }
+  update(raw, dt, alpha) {
+    if (!this.init) { this.reset(raw); return; }
+    // deadzone: ignore micro deltas so amplification doesn't amplify noise
+    if (Math.abs(raw - this.held) < this.deadzone) raw = this.held;
+    else this.held = raw;
+
+    const beta = alpha * 0.55;
+    const prev = this.level;
+    this.level = alpha * raw + (1 - alpha) * (this.level + this.trend * dt);
+    const inst = (this.level - prev) / dt;
+    this.trend = beta * inst + (1 - beta) * this.trend;
+  }
+  // where the hand will be in `lead` seconds
+  predicted(lead) { return this.level + this.trend * lead; }
+}
+
+/* ---- short raw-velocity window: gesture triggers read the last ~5 frames,
+   not the smoothed trend, so a flick fires immediately at any framerate ---- */
+class VelWindow {
+  constructor(span = 0.14) { this.span = span; this.buf = []; }
+  push(t, x, y) {
+    this.buf.push({ t, x, y });
+    while (this.buf.length > 2 && t - this.buf[0].t > this.span) this.buf.shift();
+    if (this.buf.length > 8) this.buf.shift();
+  }
+  vel() {
+    if (this.buf.length < 2) return { vx: 0, vy: 0 };
+    const a = this.buf[0], b = this.buf[this.buf.length - 1];
+    const dt = b.t - a.t;
+    if (dt < 1e-3) return { vx: 0, vy: 0 };
+    return { vx: (b.x - a.x) / dt, vy: (b.y - a.y) / dt };
+  }
+  clear() { this.buf.length = 0; }
+}
+const velWin = new VelWindow();
+
+/* ------------------------------- config -------------------------------- */
+const P = {
+  gain: 2.5,
+  leadMs: 160,
+  smoothing: 0.45,
+  stiffness: 110,
+  damping: 0.72,      // zeta: <1 overshoots (eager toy), 1 = critically damped
+  deadzoneDeg: 1.5,
+};
+
+/* ------------------------------- state --------------------------------- */
+const S = {
+  hasHand: false,
+  lastHandT: -99,
+  gesture: "—",
+  gestureStable: "—",
+  gestureCount: 0,
+  mode: "ROBOT",          // ROBOT | VEHICLE
+  frozen: false,
+  transformT: 0,          // 0 = robot, 1 = vehicle
+  calYaw: 0, calPitch: 0, calRoll: 0, calX: 0, calY: 0, calZ: 0,
+  yawWraps: 0, prevRawYaw: 0, yawInit: false,
+  spinOffset: 0,          // gesture-triggered yaw impulses (multiples of 2π)
+  flipOffset: 0,          // gesture-triggered pitch impulses (multiples of π)
+  lastSpin: -9, lastFlip: -9,
+  tYaw: 0, tPitch: 0, tRoll: 0,        // spring targets (radians)
+  tPos: new THREE.Vector3(0, 0, 0),
+  tScale: 1,
+  idleYaw: 0,
+  trackFps: 0, renderFps: 0,
+  mouseMode: false,
+  running: false,
+  wheelSpin: 0,
+  leadDeg: 0,
+};
+
+/* channels */
+const chYaw = new Channel(0), chPitch = new Channel(0), chRoll = new Channel(0);
+const chX = new Channel(0.004), chY = new Channel(0.004), chZ = new Channel(0.006);
+const lmFilters = [];
+for (let i = 0; i < 21; i++) lmFilters.push([new OneEuro(1.0, 0.05), new OneEuro(1.0, 0.05), new OneEuro(1.4, 0.05)]);
+
+/* =========================== THREE.JS SCENE ============================== */
+const canvas = document.getElementById("scene");
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+const isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, isMobile ? 1.5 : 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+if ("outputEncoding" in renderer) renderer.outputEncoding = THREE.sRGBEncoding;
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x06080f);
+scene.fog = new THREE.Fog(0x06080f, 12, 32);
+
+const camera = new THREE.PerspectiveCamera(42, window.innerWidth / window.innerHeight, 0.1, 100);
+camera.position.set(0, 1.7, 7.4);
+camera.lookAt(0, 0.75, 0);
+
+/* lights */
+scene.add(new THREE.HemisphereLight(0x9fd8ff, 0x101822, 0.65));
+const key = new THREE.DirectionalLight(0xffffff, 1.25);
+key.position.set(4.5, 8, 6);
+key.castShadow = true;
+key.shadow.mapSize.set(1024, 1024);
+key.shadow.camera.near = 1; key.shadow.camera.far = 28;
+key.shadow.camera.left = -7; key.shadow.camera.right = 7;
+key.shadow.camera.top = 7; key.shadow.camera.bottom = -7;
+key.shadow.bias = -0.0012;
+scene.add(key);
+const rim = new THREE.DirectionalLight(0x00e5ff, 0.9);
+rim.position.set(-6, 3, -5);
+scene.add(rim);
+const fill = new THREE.PointLight(0xff5a3d, 0.5, 20);
+fill.position.set(3, 1, -4);
+scene.add(fill);
+
+/* ground: grid + shadow catcher */
+const ground = new THREE.Mesh(
+  new THREE.PlaneGeometry(60, 60),
+  new THREE.ShadowMaterial({ opacity: 0.42 })
+);
+ground.rotation.x = -Math.PI / 2;
+ground.position.y = -1.85;
+ground.receiveShadow = true;
+scene.add(ground);
+
+const grid = new THREE.GridHelper(60, 60, 0x00e5ff, 0x123043);
+grid.position.y = -1.849;
+grid.material.transparent = true;
+grid.material.opacity = 0.32;
+scene.add(grid);
+
+/* =============================== ROBOT ================================== */
+function mat(color, opts = {}) {
+  return new THREE.MeshStandardMaterial({
+    color,
+    roughness: opts.rough !== undefined ? opts.rough : 0.42,
+    metalness: opts.metal !== undefined ? opts.metal : 0.35,
+    emissive: opts.emissive !== undefined ? opts.emissive : 0x000000,
+    emissiveIntensity: opts.ei !== undefined ? opts.ei : 1,
+    flatShading: true,
+  });
+}
+const MAT = {
+  hull: mat(0xff5a3d, { rough: 0.35, metal: 0.45 }),
+  hull2: mat(0xe8eef7, { rough: 0.3, metal: 0.55 }),
+  limb: mat(0x2f6bff, { rough: 0.38, metal: 0.5 }),
+  dark: mat(0x1b2434, { rough: 0.6, metal: 0.6 }),
+  gold: mat(0xffd23f, { rough: 0.28, metal: 0.7 }),
+  glow: mat(0x061018, { emissive: 0x00ffc8, ei: 2.4, rough: 0.2, metal: 0.1 }),
+  glowB: mat(0x061018, { emissive: 0x00e5ff, ei: 1.9, rough: 0.2, metal: 0.1 }),
+  tire: mat(0x11161f, { rough: 0.85, metal: 0.1 }),
+};
+
+function box(w, h, d, material, x = 0, y = 0, z = 0) {
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), material);
+  m.position.set(x, y, z);
+  m.castShadow = true; m.receiveShadow = true;
+  return m;
+}
+function cyl(rt, rb, h, seg, material) {
+  const m = new THREE.Mesh(new THREE.CylinderGeometry(rt, rb, h, seg), material);
+  m.castShadow = true; m.receiveShadow = true;
+  return m;
+}
+
+const root = new THREE.Group();          // driven by the spring (orientation/position/scale)
+const bob = new THREE.Group();           // idle breathing
+const body = new THREE.Group();          // transform pose root
+root.add(bob); bob.add(body);
+scene.add(root);
+
+/* torso */
+body.add(box(1.15, 1.25, 0.62, MAT.hull, 0, 0.15, 0));
+body.add(box(0.72, 0.5, 0.1, MAT.gold, 0, 0.42, 0.33));       // chest panel
+body.add(box(0.2, 0.2, 0.08, MAT.glow, 0, 0.42, 0.39));       // chest core
+body.add(box(1.32, 0.26, 0.5, MAT.hull2, 0, 0.72, 0));        // collar / shoulders yoke
+body.add(box(1.0, 0.34, 0.56, MAT.dark, 0, -0.56, 0));        // hip block
+body.add(box(1.2, 0.08, 0.62, MAT.glowB, 0, -0.2, 0));        // waist light strip
+
+/* head */
+const headPivot = new THREE.Group();
+headPivot.position.set(0, 0.95, 0);
+body.add(headPivot);
+headPivot.add(box(0.52, 0.44, 0.5, MAT.hull2, 0, 0.12, 0));
+headPivot.add(box(0.56, 0.13, 0.1, MAT.glow, 0, 0.14, 0.24));  // visor
+headPivot.add(box(0.1, 0.1, 0.06, MAT.glow, -0.16, 0.14, 0.27));
+headPivot.add(box(0.1, 0.1, 0.06, MAT.glow, 0.16, 0.14, 0.27));
+headPivot.add(box(0.08, 0.3, 0.08, MAT.gold, -0.3, 0.3, 0));   // antennae
+headPivot.add(box(0.08, 0.3, 0.08, MAT.gold, 0.3, 0.3, 0));
+
+/* arms */
+function makeArm(side) {
+  const sh = new THREE.Group();
+  sh.position.set(0.78 * side, 0.6, 0);
+  body.add(sh);
+  sh.add(box(0.36, 0.36, 0.4, MAT.hull2, 0, 0, 0));                 // shoulder ball
+  sh.add(box(0.28, 0.62, 0.28, MAT.limb, 0, -0.4, 0));              // upper arm
+  const el = new THREE.Group();
+  el.position.set(0, -0.72, 0);
+  sh.add(el);
+  el.add(box(0.3, 0.3, 0.3, MAT.dark, 0, 0, 0));                    // elbow
+  el.add(box(0.26, 0.6, 0.26, MAT.limb, 0, -0.38, 0));              // forearm
+  el.add(box(0.3, 0.16, 0.3, MAT.gold, 0, -0.74, 0));               // fist
+  el.add(box(0.06, 0.36, 0.06, MAT.glowB, 0.16, -0.4, 0));          // accent
+  return { sh, el };
+}
+const armL = makeArm(-1), armR = makeArm(1);
+
+/* legs */
+function makeLeg(side) {
+  const hip = new THREE.Group();
+  hip.position.set(0.34 * side, -0.7, 0);
+  body.add(hip);
+  hip.add(box(0.34, 0.34, 0.36, MAT.hull2, 0, 0, 0));
+  hip.add(box(0.36, 0.6, 0.36, MAT.limb, 0, -0.4, 0));              // thigh
+  const kn = new THREE.Group();
+  kn.position.set(0, -0.72, 0);
+  hip.add(kn);
+  kn.add(box(0.3, 0.26, 0.3, MAT.dark, 0, 0, 0));
+  kn.add(box(0.32, 0.62, 0.32, MAT.limb, 0, -0.4, 0));              // shin
+  kn.add(box(0.38, 0.16, 0.54, MAT.hull, 0, -0.74, 0.08));          // foot
+  kn.add(box(0.06, 0.34, 0.06, MAT.glowB, side * 0.17, -0.4, 0));
+  return { hip, kn };
+}
+const legL = makeLeg(-1), legR = makeLeg(1);
+
+/* wheels — live in a group that counter-rotates the flattening torso so the
+   axles stay horizontal in vehicle mode. Hidden (scale 0) in robot mode. */
+const wheelGroup = new THREE.Group();
+body.add(wheelGroup);
+const wheels = [];
+const wheelGeoSpots = [[-0.62, -0.5, 0.78], [0.62, -0.5, 0.78], [-0.62, -0.5, -0.78], [0.62, -0.5, -0.78]];
+for (const [wx, wy, wz] of wheelGeoSpots) {
+  const g = new THREE.Group();
+  g.position.set(wx, wy, wz);
+  g.scale.setScalar(0.0001);
+  const tireGeo = new THREE.CylinderGeometry(0.3, 0.3, 0.22, 16);
+  tireGeo.rotateZ(Math.PI / 2);                 // axle along X
+  const tire = new THREE.Mesh(tireGeo, MAT.tire);
+  tire.castShadow = true; tire.receiveShadow = true;
+  const hubGeo = new THREE.CylinderGeometry(0.14, 0.14, 0.24, 8);
+  hubGeo.rotateZ(Math.PI / 2);
+  const hub = new THREE.Mesh(hubGeo, MAT.gold);
+  g.add(tire); g.add(hub);
+  wheelGroup.add(g);
+  wheels.push({ g, tire, hub });
+}
+
+/* thruster glow used in vehicle mode */
+const thruster = box(0.62, 0.14, 0.14, MAT.glow, 0, -0.12, -1.02);
+thruster.scale.setScalar(0.0001);
+wheelGroup.add(thruster);
+
+/* ---- pose keyframes: ROBOT (t=0) <-> VEHICLE (t=1), articulated fold ---- */
+const POSE = [
+  // [node, robotRot, vehicleRot, robotPos, vehiclePos]
+  { n: body,        r0: [0, 0, 0],                 r1: [-Math.PI / 2, 0, 0],        p0: [0, 0, 0],       p1: [0, -0.35, 0] },
+  { n: headPivot,   r0: [0, 0, 0],                 r1: [Math.PI * 0.62, 0, 0],      p0: [0, 0.95, 0],    p1: [0, 0.30, 0.34] },
+  { n: armL.sh,     r0: [0, 0, 0.1],               r1: [0.5, 0, 2.95],              p0: [-0.78, 0.6, 0], p1: [-0.6, 0.2, 0.16] },
+  { n: armR.sh,     r0: [0, 0, -0.1],              r1: [0.5, 0, -2.95],             p0: [0.78, 0.6, 0],  p1: [0.6, 0.2, 0.16] },
+  { n: armL.el,     r0: [0, 0, 0],                 r1: [-2.35, 0, 0],               p0: [0, -0.72, 0],   p1: [0, -0.72, 0] },
+  { n: armR.el,     r0: [0, 0, 0],                 r1: [-2.35, 0, 0],               p0: [0, -0.72, 0],   p1: [0, -0.72, 0] },
+  { n: legL.hip,    r0: [0, 0, 0.04],              r1: [2.75, 0, 0.04],             p0: [-0.34, -0.7, 0],p1: [-0.44, -0.5, -0.1] },
+  { n: legR.hip,    r0: [0, 0, -0.04],             r1: [2.75, 0, -0.04],            p0: [0.34, -0.7, 0], p1: [0.44, -0.5, -0.1] },
+  { n: legL.kn,     r0: [0, 0, 0],                 r1: [-2.5, 0, 0],                p0: [0, -0.72, 0],   p1: [0, -0.72, 0] },
+  { n: legR.kn,     r0: [0, 0, 0],                 r1: [-2.5, 0, 0],                p0: [0, -0.72, 0],   p1: [0, -0.72, 0] },
+];
+
+function applyTransformPose(tRaw) {
+  const t = easeInOut(clamp(tRaw, 0, 1));
+  for (const k of POSE) {
+    k.n.rotation.set(lerp(k.r0[0], k.r1[0], t), lerp(k.r0[1], k.r1[1], t), lerp(k.r0[2], k.r1[2], t));
+    k.n.position.set(lerp(k.p0[0], k.p1[0], t), lerp(k.p0[1], k.p1[1], t), lerp(k.p0[2], k.p1[2], t));
+  }
+  // counter-rotate wheels so axles stay level while the torso folds flat
+  wheelGroup.rotation.x = (Math.PI / 2) * t;
+  wheelGroup.position.y = lerp(0, 0.1, t);
+  const ws = Math.max(0.0001, easeInOut(clamp((tRaw - 0.35) / 0.65, 0, 1)));
+  for (const w of wheels) {
+    w.g.scale.setScalar(ws);
+    w.tire.rotation.x = S.wheelSpin;
+    w.hub.rotation.x = S.wheelSpin;
+  }
+  thruster.scale.setScalar(Math.max(0.0001, ws));
+  MAT.glow.emissiveIntensity = lerp(2.4, 3.4, t);
+}
+applyTransformPose(0);
+
+/* ======================= AMPLIFIED SPRING DYNAMICS ======================= */
+/* The spring integrates UNWRAPPED scalar yaw/pitch/roll (so a +2π spin
+   impulse is real travel, not a quaternion no-op) and composes the robot's
+   quaternion from the spring state every frame — continuous 360° yaw, no
+   gimbal snap, and a stopped hand still gets momentum overshoot + settle.  */
+const rot = { y: 0, p: 0, r: 0, vy: 0, vp: 0, vr: 0 };
+const qCur = new THREE.Quaternion();
+const posCur = new THREE.Vector3(0, 0, 0);
+const posVel = new THREE.Vector3(0, 0, 0);
+let scaleCur = 1, scaleVel = 0;
+const _e = new THREE.Euler();
+
+function springAxis(cur, vel, target, k, c, dt) {
+  vel += (target - cur) * k * dt;       // semi-implicit Euler: stable + bouncy
+  vel -= vel * Math.min(1, c * dt);
+  return [cur + vel * dt, vel];
+}
+
+function stepSpring(dt) {
+  const k = P.stiffness;
+  const c = 2 * P.damping * Math.sqrt(k);
+
+  [rot.y, rot.vy] = springAxis(rot.y, rot.vy, S.tYaw, k, c, dt);
+  [rot.p, rot.vp] = springAxis(rot.p, rot.vp, S.tPitch, k, c, dt);
+  [rot.r, rot.vr] = springAxis(rot.r, rot.vr, S.tRoll, k, c, dt);
+  _e.set(rot.p, rot.y, rot.r, "YXZ");
+  qCur.setFromEuler(_e);
+
+  // position spring
+  const pErr = S.tPos.clone().sub(posCur);
+  posVel.addScaledVector(pErr, k * 0.8 * dt);
+  posVel.addScaledVector(posVel, -Math.min(1, c * dt));
+  posCur.addScaledVector(posVel, dt);
+
+  // scale / dolly spring
+  const sErr = S.tScale - scaleCur;
+  scaleVel += sErr * k * 0.6 * dt;
+  scaleVel -= scaleVel * Math.min(1, c * dt);
+  scaleCur += scaleVel * dt;
+  scaleCur = clamp(scaleCur, 0.45, 1.9);
+}
+const rotSpeed = () => Math.hypot(rot.vy, rot.vp, rot.vr);
+
+/* ============================ HAND ANALYSIS ============================= */
+const V = (x, y, z) => new THREE.Vector3(x, y, z);
+
+/* landmark -> world-ish coords; x is mirrored so the view is a selfie mirror */
+function toVec(l) { return V(-(l.x - 0.5) * 2, -(l.y - 0.5) * 2, -(l.z || 0) * 2); }
+
+function fingerStates(pts) {
+  // extended if the tip is further from the wrist than the PIP joint
+  const w = pts[0];
+  const idx = [[2, 3, 4], [5, 6, 8], [9, 10, 12], [13, 14, 16], [17, 18, 20]];
+  const out = [];
+  for (let f = 0; f < 5; f++) {
+    const [mcp, pip, tip] = idx[f];
+    const dTip = pts[tip].distanceTo(w);
+    const dPip = pts[pip].distanceTo(w);
+    if (f === 0) {
+      // thumb: sideways spread from the index MCP is the reliable signal
+      const spread = pts[4].distanceTo(pts[5]);
+      const palm = pts[0].distanceTo(pts[9]);
+      out.push(spread > palm * 0.72 ? 1 : 0);
+    } else {
+      out.push(dTip > dPip * 1.12 ? 1 : 0);
+    }
+  }
+  return out;
+}
+
+function classify(f) {
+  const n = f.reduce((a, b) => a + b, 0);
+  if (n >= 4) return "OPEN PALM";
+  if (n <= 1) return "FIST";
+  if (f[1] && f[2] && !f[3] && !f[4]) return "PEACE";
+  if (f[1] && !f[2] && !f[3] && !f[4]) return "POINT";
+  return "PARTIAL";
+}
+
+/* palm orientation basis -> YXZ euler */
+const _m = new THREE.Matrix4();
+const _q = new THREE.Quaternion();
+const _eu = new THREE.Euler();
+function palmOrientation(pts, handSign) {
+  const wr = pts[0];
+  const up = pts[9].clone().sub(wr).normalize();                       // wrist -> middle MCP
+  const a = pts[5].clone().sub(wr);
+  const b = pts[17].clone().sub(wr);
+  let nrm = a.clone().cross(b).multiplyScalar(handSign).normalize();   // out of the palm
+  // Gram-Schmidt into a clean right-handed basis (x=right, y=up, z=normal)
+  nrm.addScaledVector(up, -nrm.dot(up)).normalize();
+  const right = up.clone().cross(nrm).normalize();
+  _m.makeBasis(right, up, nrm);
+  _q.setFromRotationMatrix(_m);
+  _eu.setFromQuaternion(_q, "YXZ");
+  return { yaw: _eu.y, pitch: _eu.x, roll: _eu.z };
+}
+
+/* continuous 360° yaw: unwrap across the ±π seam so spins never gimbal-snap */
+function unwrapYaw(raw) {
+  if (!S.yawInit) { S.prevRawYaw = raw; S.yawInit = true; S.yawWraps = 0; }
+  let d = raw - S.prevRawYaw;
+  if (d > Math.PI) S.yawWraps--;
+  else if (d < -Math.PI) S.yawWraps++;
+  S.prevRawYaw = raw;
+  return raw + S.yawWraps * 2 * Math.PI;
+}
+
+/* When tracking re-acquires, re-anchor calibration so the *current* robot
+   target is preserved — no snap, ever. */
+function reanchor(y, p, r, x, yy, z) {
+  S.calYaw = y - (S.tYaw - S.spinOffset) / P.gain;
+  S.calPitch = p - clamp(S.tPitch - S.flipOffset, -Math.PI, Math.PI) / P.gain;
+  S.calRoll = r - S.tRoll / P.gain;
+  S.calX = x - S.tPos.x / 3.1;
+  S.calY = yy - S.tPos.y / 2.0;
+  S.calZ = z;
+}
+
+/* ============================== TRACKING =============================== */
+const video = document.getElementById("cam");
+const overlay = document.getElementById("overlay");
+const octx = overlay.getContext("2d");
+const CONNECTIONS = [
+  [0,1],[1,2],[2,3],[3,4],
+  [0,5],[5,6],[6,7],[7,8],
+  [5,9],[9,10],[10,11],[11,12],
+  [9,13],[13,14],[14,15],[15,16],
+  [13,17],[17,18],[18,19],[19,20],[0,17],
+];
+
+let lastTrackT = 0;
+function drawSkeleton(lms, fingers) {
+  const w = overlay.width, h = overlay.height;
+  octx.clearRect(0, 0, w, h);
+  if (!lms) return;
+  octx.lineWidth = Math.max(1.5, w / 150);
+  octx.strokeStyle = "rgba(0,229,255,0.85)";
+  octx.beginPath();
+  for (const [a, b] of CONNECTIONS) {
+    octx.moveTo(lms[a].x * w, lms[a].y * h);
+    octx.lineTo(lms[b].x * w, lms[b].y * h);
+  }
+  octx.stroke();
+  const tips = [4, 8, 12, 16, 20];
+  for (let i = 0; i < lms.length; i++) {
+    const ti = tips.indexOf(i);
+    const ext = ti >= 0 && fingers && fingers[ti];
+    octx.fillStyle = ti >= 0 ? (ext ? "#4dffa6" : "#ff5a3d") : "#ffd23f";
+    octx.beginPath();
+    octx.arc(lms[i].x * w, lms[i].y * h, ti >= 0 ? w / 78 : w / 130, 0, Math.PI * 2);
+    octx.fill();
+  }
+}
+
+function onResults(res) {
+  const t = nowSec();
+  const dtT = clamp(t - lastTrackT, 1 / 240, 0.5);
+  lastTrackT = t;
+  S.trackFps = S.trackFps ? lerp(S.trackFps, 1 / dtT, 0.15) : 1 / dtT;
+
+  if (overlay.width !== video.videoWidth && video.videoWidth) {
+    overlay.width = Math.min(320, video.videoWidth);
+    overlay.height = overlay.width * (video.videoHeight / video.videoWidth);
+  }
+
+  const lms = res.multiHandLandmarks && res.multiHandLandmarks[0];
+  if (!lms) {
+    S.hasHand = false;
+    velWin.clear();
+    drawSkeleton(null);
+    setPip("NO HAND", "var(--warn)");
+    return;
+  }
+
+  const label = (res.multiHandedness && res.multiHandedness[0] && res.multiHandedness[0].label) || "Right";
+  const handSign = label === "Right" ? 1 : -1;
+
+  // 1) One Euro filter every landmark BEFORE anything is amplified
+  const pts = [];
+  for (let i = 0; i < 21; i++) {
+    const f = lmFilters[i];
+    const l = lms[i];
+    pts.push(toVec({ x: f[0].filter(l.x, t), y: f[1].filter(l.y, t), z: f[2].filter(l.z || 0, t) }));
+  }
+
+  const fingers = fingerStates(pts);
+  drawSkeleton(lms, fingers);
+  const g = classify(fingers);
+  if (g === S.gesture) S.gestureCount++;
+  else { S.gesture = g; S.gestureCount = 0; }
+  if (S.gestureCount >= 2) S.gestureStable = g;
+
+  const o = palmOrientation(pts, handSign);
+  const yawC = unwrapYaw(o.yaw);
+
+  // palm centre + apparent size (size => depth)
+  const c = pts[0].clone().add(pts[9]).add(pts[5]).add(pts[17]).multiplyScalar(0.25);
+  let minX = 9, maxX = -9, minY = 9, maxY = -9;
+  for (const p of pts) { minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x); minY = Math.min(minY, p.y); maxY = Math.max(maxY, p.y); }
+  const size = Math.hypot(maxX - minX, maxY - minY);
+
+  const firstTouch = !S.hasHand;
+  S.hasHand = true;
+  S.lastHandT = t;
+  setPip("TRACKING", "var(--good)");
+
+  const dzr = P.deadzoneDeg / DEG;
+  chYaw.deadzone = chPitch.deadzone = chRoll.deadzone = dzr;
+
+  if (firstTouch) {
+    chYaw.reset(yawC); chPitch.reset(o.pitch); chRoll.reset(o.roll);
+    chX.reset(c.x); chY.reset(c.y); chZ.reset(size);
+    if (S.calYaw === 0 && S.calPitch === 0 && S.calRoll === 0 && S.tYaw === 0) {
+      // very first acquisition: adopt as neutral
+      S.calYaw = yawC; S.calPitch = o.pitch; S.calRoll = o.roll;
+      S.calX = c.x; S.calY = c.y; S.calZ = size;
+    } else {
+      reanchor(yawC, o.pitch, o.roll, c.x, c.y, size);
+    }
+  }
+
+  const alpha = lerp(0.9, 0.12, P.smoothing);
+  chYaw.update(yawC, dtT, alpha);
+  chPitch.update(o.pitch, dtT, alpha);
+  chRoll.update(o.roll, dtT, alpha);
+  chX.update(c.x, dtT, alpha);
+  chY.update(c.y, dtT, alpha);
+  chZ.update(size, dtT, alpha);
+
+  // gestures driven by raw (pre-filter) palm velocity over the last ~5 frames
+  const rc = toVec(lms[0]).add(toVec(lms[9])).add(toVec(lms[5])).add(toVec(lms[17])).multiplyScalar(0.25);
+  velWin.push(t, rc.x, rc.y);
+  triggerImpulses(t);
+
+  // mode from stable gesture
+  S.frozen = S.gestureStable === "PEACE";
+  if (S.gestureStable === "FIST" && S.mode !== "VEHICLE") { S.mode = "VEHICLE"; toast("VEHICLE MODE"); }
+  if (S.gestureStable === "OPEN PALM" && S.mode !== "ROBOT") { S.mode = "ROBOT"; toast("ROBOT MODE"); }
+
+  S.rawYpr = o;
+  S.rawSize = size;
+}
+
+// the PiP <video> is CSS-mirrored, so mirror the overlay to match
+overlay.style.transform = "scaleX(-1)";
+
+const SWIPE_V = 1.8, FLICK_V = 1.6, IMPULSE_COOLDOWN = 0.7;
+function triggerImpulses(t) {
+  const { vx, vy } = velWin.vel();
+  if (Math.abs(vx) > SWIPE_V && Math.abs(vx) > Math.abs(vy) * 1.25 && t - S.lastSpin > IMPULSE_COOLDOWN) {
+    S.spinOffset += Math.sign(vx) * Math.PI * 2;   // full 360°, carried by the spring
+    S.lastSpin = t; velWin.clear();
+    toast("360° SPIN");
+  } else if (Math.abs(vy) > FLICK_V && Math.abs(vy) > Math.abs(vx) * 1.25 && t - S.lastFlip > IMPULSE_COOLDOWN) {
+    S.flipOffset += Math.sign(vy) * Math.PI;       // 180° flip
+    S.lastFlip = t; velWin.clear();
+    toast("180° FLIP");
+  }
+}
+
+/* ---------------- target computation (gain + prediction) ---------------- */
+function updateTargets(dt) {
+  const t = nowSec();
+  const lead = P.leadMs / 1000;
+  const stale = t - S.lastHandT;
+
+  if (S.hasHand && stale < 0.35 && !S.frozen) {
+    const py = chYaw.predicted(lead);
+    const pp = chPitch.predicted(lead);
+    const pr = chRoll.predicted(lead);
+    const px = chX.predicted(lead);
+    const pyy = chY.predicted(lead);
+    const pz = chZ.predicted(lead);
+
+    // GAIN: robot delta = hand delta × gain (yaw stays continuous/unbounded)
+    S.tYaw = (py - S.calYaw) * P.gain + S.spinOffset;
+    S.tPitch = clamp((pp - S.calPitch) * P.gain, -Math.PI, Math.PI) + S.flipOffset;
+    S.tRoll = clamp((pr - S.calRoll) * P.gain, -Math.PI * 0.85, Math.PI * 0.85);
+
+    S.tPos.x = clamp((px - S.calX) * 3.1, -3.4, 3.4);
+    S.tPos.y = clamp((pyy - S.calY) * 2.0, -1.1, 1.6);
+    S.tPos.z = clamp((pz - S.calZ) * 4.5, -2.2, 2.2);
+    S.tScale = clamp(1 + (pz - S.calZ) * 1.5, 0.55, 1.75);
+
+    S.leadDeg = chYaw.trend * lead * P.gain * DEG;
+    S.idleYaw = S.tYaw;
+  } else if (S.hasHand && S.frozen) {
+    S.leadDeg = 0;                                    // hold current target
+  } else {
+    // tracking lost -> ease into an idle spin, never snap or freeze
+    S.leadDeg = 0;
+    const blend = clamp((stale - 0.35) / 1.2, 0, 1);
+    S.idleYaw += dt * 0.55;
+    S.tYaw = lerp(S.tYaw, S.idleYaw, blend * 0.9 * dt * 3);
+    S.tPitch = lerp(S.tPitch, S.flipOffset, dt * 1.4);
+    S.tRoll = lerp(S.tRoll, Math.sin(t * 0.7) * 0.12, dt * 1.4);
+    S.tPos.lerp(new THREE.Vector3(0, Math.sin(t * 1.1) * 0.09, 0), dt * 1.5);
+    S.tScale = lerp(S.tScale, 1, dt * 1.6);
+    if (stale > 0.5) S.gestureStable = "—";
+  }
+}
+
+/* ================================ MOUSE ================================= */
+/* Graceful fallback / desk-testing rig: the pointer synthesises a palm and
+   feeds the exact same amplify->predict->spring pipeline.                  */
+const mouse = { x: 0.5, y: 0.5, down: false, inside: false };
+window.addEventListener("pointermove", e => {
+  mouse.x = e.clientX / window.innerWidth;
+  mouse.y = e.clientY / window.innerHeight;
+  mouse.inside = true;
+});
+window.addEventListener("pointerdown", e => { if (e.target === canvas) mouse.down = true; });
+window.addEventListener("pointerup", () => { mouse.down = false; });
+
+let lastMouseT = 0;
+function mouseSample() {
+  const t = nowSec();
+  const dt = clamp(t - lastMouseT, 1 / 240, 0.25);
+  lastMouseT = t;
+  S.trackFps = lerp(S.trackFps || 60, 1 / dt, 0.1);
+
+  const yaw = (mouse.x - 0.5) * Math.PI * 1.4;
+  const pitch = -(mouse.y - 0.5) * Math.PI * 0.9;
+  const roll = (mouse.x - 0.5) * 0.5;
+  const cx = (0.5 - mouse.x) * -1.2, cy = (0.5 - mouse.y) * 1.2;
+
+  const firstTouch = !S.hasHand;
+  S.hasHand = true; S.lastHandT = t;
+  if (firstTouch) {
+    chYaw.reset(yaw); chPitch.reset(pitch); chRoll.reset(roll);
+    chX.reset(cx); chY.reset(cy); chZ.reset(0.5);
+    S.calYaw = yaw; S.calPitch = pitch; S.calRoll = roll; S.calX = cx; S.calY = cy; S.calZ = 0.5;
+  }
+  const alpha = lerp(0.9, 0.12, P.smoothing);
+  chYaw.deadzone = chPitch.deadzone = chRoll.deadzone = P.deadzoneDeg / DEG;
+  chYaw.update(yaw, dt, alpha); chPitch.update(pitch, dt, alpha); chRoll.update(roll, dt, alpha);
+  chX.update(cx, dt, alpha); chY.update(cy, dt, alpha); chZ.update(0.5, dt, alpha);
+
+  velWin.push(t, cx, cy);
+  triggerImpulses(t);
+
+  const g = mouse.down ? "FIST" : "OPEN PALM";
+  S.gesture = S.gestureStable = g;
+  if (g === "FIST" && S.mode !== "VEHICLE") { S.mode = "VEHICLE"; toast("VEHICLE MODE"); }
+  if (g === "OPEN PALM" && S.mode !== "ROBOT") { S.mode = "ROBOT"; toast("ROBOT MODE"); }
+  S.rawYpr = { yaw, pitch, roll };
+}
+
+/* ============================= RENDER LOOP ============================== */
+let lastFrame = nowSec();
+function tick() {
+  requestAnimationFrame(tick);
+  const t = nowSec();
+  let dt = t - lastFrame;
+  lastFrame = t;
+  if (dt > 0.1) dt = 0.1;
+  if (dt <= 0) return;
+  S.renderFps = lerp(S.renderFps || 60, 1 / dt, 0.08);
+
+  if (S.mouseMode) mouseSample();
+
+  updateTargets(dt);
+
+  // fixed-ish substeps keep the spring stable at any framerate
+  const steps = dt > 1 / 45 ? 2 : 1;
+  for (let i = 0; i < steps; i++) stepSpring(dt / steps);
+
+  root.quaternion.copy(qCur);
+  root.position.copy(posCur);
+  root.scale.setScalar(scaleCur);
+
+  // transform animation (~0.6 s), reversible
+  const want = S.mode === "VEHICLE" ? 1 : 0;
+  const dir = Math.sign(want - S.transformT);
+  if (dir !== 0) S.transformT = clamp(S.transformT + dir * dt / 0.6, 0, 1);
+
+  S.wheelSpin += (posVel.length() * 1.6 + rotSpeed() * 0.5 + 1.5 * S.transformT) * dt;
+  applyTransformPose(S.transformT);
+
+  // idle life: breathing bob + slow head sway when nothing is driving us
+  const idleAmt = clamp((t - S.lastHandT - 0.3) / 1.0, 0, 1);
+  bob.position.y = Math.sin(t * 1.6) * 0.05 * (0.4 + 0.6 * idleAmt);
+  bob.rotation.z = Math.sin(t * 0.9) * 0.012 * idleAmt;
+  headPivot.rotation.y += (Math.sin(t * 0.6) * 0.4 * idleAmt - headPivot.rotation.y) * dt * 2.2;
+  const pulse = 1 + Math.sin(t * 3.2) * 0.18;
+  MAT.glowB.emissiveIntensity = 1.6 * pulse;
+
+  renderer.render(scene, camera);
+  updateHud();
+}
+
+/* ================================= HUD ================================== */
+const el = id => document.getElementById(id);
+const rMode = el("rMode"), rGesture = el("rGesture"), rTrackFps = el("rTrackFps"),
+  rRenderFps = el("rRenderFps"), rYpr = el("rYpr"), rRobotYaw = el("rRobotYaw"), rLead = el("rLead");
+
+let hudAcc = 0;
+function updateHud() {
+  hudAcc++;
+  if (hudAcc % 4) return;
+  const idle = !S.hasHand || nowSec() - S.lastHandT > 0.35;
+  const label = S.frozen ? "FROZEN" : (idle ? "IDLE" : S.mode);
+  rMode.textContent = label;
+  rMode.className = "mode-pill " + (idle || S.frozen ? "m-idle" : S.mode === "VEHICLE" ? "m-vehicle" : "m-robot");
+  rGesture.textContent = idle ? "—" : S.gestureStable;
+  rTrackFps.textContent = Math.round(S.trackFps || 0);
+  rRenderFps.textContent = Math.round(S.renderFps || 0);
+  const o = S.rawYpr || { yaw: 0, pitch: 0, roll: 0 };
+  rYpr.textContent = `${(o.yaw * DEG).toFixed(0)}° ${(o.pitch * DEG).toFixed(0)}° ${(o.roll * DEG).toFixed(0)}°`;
+  const ry = ((rot.y * DEG) % 360 + 360) % 360;
+  rRobotYaw.textContent = `${ry.toFixed(0)}°`;
+  rLead.textContent = `${S.leadDeg >= 0 ? "+" : ""}${S.leadDeg.toFixed(0)}°`;
+}
+
+let toastTimer = null;
+function toast(msg) {
+  const tEl = el("toast");
+  tEl.textContent = msg;
+  tEl.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => tEl.classList.remove("show"), 1100);
+}
+function setPip(txt, color) {
+  const p = el("pipState");
+  p.textContent = txt;
+  p.style.color = color;
+}
+
+/* sliders */
+function bindSlider(id, out, key, fmt) {
+  const s = el(id), o = el(out);
+  const apply = () => { P[key] = parseFloat(s.value); o.textContent = fmt ? fmt(P[key]) : s.value; };
+  s.addEventListener("input", apply);
+  apply();
+}
+bindSlider("sGain", "vGain", "gain", v => v.toFixed(1));
+bindSlider("sLead", "vLead", "leadMs", v => v.toFixed(0));
+bindSlider("sSmooth", "vSmooth", "smoothing", v => v.toFixed(2));
+bindSlider("sStiff", "vStiff", "stiffness", v => v.toFixed(0));
+bindSlider("sDamp", "vDamp", "damping", v => v.toFixed(2));
+
+/* buttons */
+el("bCal").onclick = () => calibrate();
+el("bTransform").onclick = () => {
+  S.mode = S.mode === "ROBOT" ? "VEHICLE" : "ROBOT";
+  toast(S.mode + " MODE");
+};
+el("bReset").onclick = () => {
+  S.spinOffset = 0; S.flipOffset = 0;
+  S.tYaw = S.tPitch = S.tRoll = 0;
+  S.tPos.set(0, 0, 0); S.tScale = 1;
+  rot.vy = rot.vp = rot.vr = 0; posVel.set(0, 0, 0); scaleVel = 0;
+  calibrate(true);
+  toast("RESET");
+};
+el("bMouse").onclick = () => {
+  S.mouseMode = !S.mouseMode;
+  el("bMouse").classList.toggle("on", S.mouseMode);
+  S.hasHand = false;
+  toast(S.mouseMode ? "MOUSE MODE ON" : "MOUSE MODE OFF");
+};
+
+function calibrate(silent) {
+  if (S.rawYpr) {
+    S.calYaw = chYaw.level; S.calPitch = chPitch.level; S.calRoll = chRoll.level;
+    S.calX = chX.level; S.calY = chY.level; S.calZ = chZ.level;
+  }
+  S.spinOffset = 0; S.flipOffset = 0;
+  if (!silent) toast("CALIBRATED — NEUTRAL SET");
+}
+
+window.addEventListener("keydown", e => {
+  const k = e.key.toLowerCase();
+  if (k === "c") calibrate();
+  else if (k === "t") el("bTransform").click();
+  else if (k === "h") {
+    for (const id of ["hud", "help", "pip"]) el(id).classList.toggle("hidden");
+  } else if (k === "m") el("bMouse").click();
+});
+
+window.addEventListener("resize", () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+/* ============================== BOOTSTRAP =============================== */
+async function startCamera() {
+  if (typeof Hands === "undefined" || typeof Camera === "undefined") {
+    throw new Error("MediaPipe failed to load (offline or blocked CDN).");
+  }
+  const hands = new Hands({
+    locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/${f}`,
+  });
+  hands.setOptions({
+    maxNumHands: 1,
+    modelComplexity: isMobile ? 0 : 1,
+    minDetectionConfidence: 0.6,
+    minTrackingConfidence: 0.6,
+  });
+  hands.onResults(onResults);
+
+  const cam = new Camera(video, {
+    onFrame: async () => { await hands.send({ image: video }); },
+    width: isMobile ? 480 : 640,
+    height: isMobile ? 360 : 480,
+  });
+  await cam.start();
+  setPip("STARTING…", "var(--warn)");
+}
+
+function startLoop() {
+  if (S.running) return;
+  S.running = true;
+  el("boot").classList.add("hidden");
+  lastFrame = nowSec();
+  tick();
+}
+
+el("bStart").onclick = async () => {
+  el("bootMsg").textContent = "Requesting camera…";
+  try {
+    await startCamera();
+    startLoop();
+    toast("SHOW YOUR HAND TO THE CAMERA");
+  } catch (err) {
+    el("bootMsg").innerHTML =
+      `<span class="err">Camera unavailable: ${String(err && err.message || err)}</span><br />` +
+      `You can still drive the robot with the mouse.`;
+  }
+};
+el("bStartMouse").onclick = () => {
+  S.mouseMode = true;
+  el("bMouse").classList.add("on");
+  setPip("MOUSE MODE", "var(--accent)");
+  startLoop();
+  toast("MOUSE MODE — MOVE POINTER, HOLD CLICK TO TRANSFORM");
+};
+</script>

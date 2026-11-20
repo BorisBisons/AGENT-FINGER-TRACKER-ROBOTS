@@ -11,3 +11,5 @@
   `@mediapipe/tasks-vision` both claim the global WASM `Module`; use Tasks for everything.
 - **Check model variants before shipping.** The 8-bit quantised MobileCLIP vision model gave wrong
   labels; fp16 matched full precision.
+- **Don't rely on the browser's default camera.** With a USB webcam plugged in, Chrome still opened
+  the Mac's built-in one; auto-prefer external cameras and remember the user's pick.

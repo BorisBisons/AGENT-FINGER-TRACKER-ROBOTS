@@ -1157,7 +1157,14 @@ window.addEventListener("keydown", e => {
    highest resolution it offers is requested, and optical / digital zoom is
    exposed when the camera supports it. */
 let stream = null, lastFrameT = -1;
-async function openCamera(deviceId) {
+const BUILT_IN = /facetime|built-?in|integrated|isight/i, NOT_A_WEBCAM = /virtual|obs|snap|iphone|ipad|continuity|desk view/i;
+async function listCameras(currentId) {
+  const cams = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === "videoinput");
+  $("camSel").innerHTML = cams.map((c, i) => `<option value="${c.deviceId}">${c.label || "Camera " + (i + 1)}</option>`).join("");
+  if (currentId) $("camSel").value = currentId;
+  return cams;
+}
+async function openCamera(deviceId, auto = true) {
   if (stream) stream.getTracks().forEach(t => t.stop());
   const mobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
   const base = { width: { ideal: mobile ? 640 : 1920 }, height: { ideal: mobile ? 480 : 1080 }, frameRate: { ideal: 30 } };   // detail needs pixels
@@ -1169,9 +1176,18 @@ async function openCamera(deviceId) {
   const track = stream.getVideoTracks()[0], set = track.getSettings();
   $("camRes").textContent = `· ${set.width}×${set.height}`;
 
-  const cams = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === "videoinput");
-  $("camSel").innerHTML = cams.map((c, i) => `<option value="${c.deviceId}">${c.label || "Camera " + (i + 1)}</option>`).join("");
-  $("camSel").value = set.deviceId || "";
+  // No camera chosen yet: use the one picked last time, else prefer a plugged-in USB webcam
+  // over the laptop's built-in one (the browser's default is usually the built-in).
+  const cams = await listCameras(set.deviceId);
+  if (!deviceId && auto) {
+    const saved = store.get("facetrack.camera", null);
+    const pick = cams.find(c => c.deviceId === saved) || cams.find(c => c.label && !BUILT_IN.test(c.label) && !NOT_A_WEBCAM.test(c.label));
+    if (pick && pick.deviceId !== set.deviceId) {
+      try { return await openCamera(pick.deviceId, false); }
+      catch (e) { logEvent("COULD NOT OPEN " + pick.label.toUpperCase()); return openCamera(null, false); }
+    }
+  }
+  logEvent("CAMERA: " + (track.label || "default").toUpperCase());
 
   const caps = track.getCapabilities ? track.getCapabilities() : {};
   const zr = $("zoomRow"), z = $("zoom");
@@ -1185,7 +1201,14 @@ async function openCamera(deviceId) {
   for (const k in F) F[k].reset();                                 // new view: re-learn the neutral face
   S.base = null; S.baseAcc = null; D.mm = 0;
 }
-$("camSel").onchange = e => openCamera(e.target.value).catch(err => logEvent("CAMERA ERROR: " + err.message));
+$("camSel").onchange = e => {
+  store.set("facetrack.camera", e.target.value);
+  openCamera(e.target.value, false).catch(err => { logEvent("CAMERA ERROR: " + err.message); openCamera(null, false); });
+};
+// a webcam plugged in while the page is open shows up in the list straight away
+navigator.mediaDevices && navigator.mediaDevices.addEventListener("devicechange", () => {
+  if (S.running) listCameras(stream && stream.getVideoTracks()[0].getSettings().deviceId);
+});
 
 function pump() {
   if (video.readyState >= 2 && video.currentTime !== lastFrameT) {

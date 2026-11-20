@@ -85,7 +85,7 @@
 <video id="cam" playsinline muted autoplay></video>
 
 <div id="hud" class="panel">
-  <h1>FACE&#8209;TRACK <span>v4.0</span></h1>
+  <h1>FACE&#8209;TRACK <span>v4.2</span></h1>
   <div class="row"><span class="k">FACE</span><span class="v" id="rFace">—</span></div>
   <div class="row"><span class="k">TRACKING</span><span class="v"><span id="rFps">0</span> fps</span></div>
   <div class="row"><span class="k">HEAD</span><span class="v" id="rHead">—</span></div>
@@ -107,6 +107,7 @@
   <div class="sep"></div>
   <div class="cap">CAMERA <span id="camRes"></span></div>
   <select id="camSel"></select>
+  <div id="camNote" class="off" style="margin-top:5px; line-height:1.5"></div>
   <div id="zoomRow" class="hidden"><div class="cap" style="margin-top:7px">ZOOM <span id="zoomVal"></span></div><input type="range" id="zoom" /></div>
   <div class="btns">
     <button id="bMesh" class="act">MESH</button>
@@ -1162,6 +1163,9 @@ async function listCameras(currentId) {
   const cams = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === "videoinput");
   $("camSel").innerHTML = cams.map((c, i) => `<option value="${c.deviceId}">${c.label || "Camera " + (i + 1)}</option>`).join("");
   if (currentId) $("camSel").value = currentId;
+  // say plainly what the browser can see, so a missing webcam is obvious
+  $("camNote").textContent = cams.length > 1 ? `${cams.length} cameras found — choose one above`
+    : "Only 1 camera is visible to this browser. If a USB webcam is plugged in: close other apps using it, replug it, then reload.";
   return cams;
 }
 async function openCamera(deviceId, auto = true) {

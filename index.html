@@ -1,5 +1,5 @@
 <meta charset="utf-8" />
-<title>MECHA-HAND — Hand-Tracked Transforming Robot Toy</title>
+<title>MECHA-FACE — Face-Tracked Transforming Robot Toy</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
 
 <style>
@@ -126,7 +126,7 @@
 <canvas id="scene"></canvas>
 
 <div id="hud" class="panel">
-  <h1>MECHA&#8209;HAND <span class="v">v1.1</span></h1>
+  <h1>MECHA&#8209;FACE <span class="v">v2.0</span></h1>
 
   <div class="row"><span class="k">MODE</span><span class="v"><span id="rMode" class="mode-pill m-idle">IDLE</span></span></div>
   <div class="row"><span class="k">GESTURE</span><span class="v" id="rGesture">—</span></div>
@@ -134,7 +134,7 @@
   <div class="row"><span class="k">YAW / PITCH / ROLL</span><span class="v" id="rYpr">0° 0° 0°</span></div>
   <div class="row"><span class="k">ROBOT YAW</span><span class="v" id="rRobotYaw">0°</span></div>
   <div class="row"><span class="k">LEAD</span><span class="v" id="rLead">+0°</span></div>
-  <div class="row"><span class="k">FINGERS</span><span class="v" id="rFingers" style="letter-spacing:3px">▁▁▁▁▁</span></div>
+  <div class="row"><span class="k">EXPR (J·R·L·B·S)</span><span class="v" id="rExpr" style="letter-spacing:3px">▁▁▁▁▁</span></div>
 
   <div class="sep"></div>
 
@@ -143,8 +143,8 @@
     <input type="range" id="sGain" min="1" max="5" step="0.1" value="2.5" />
   </div>
   <div class="slider">
-    <label>FINGER GAIN <b><span id="vFGain">1.6</span>×</b></label>
-    <input type="range" id="sFGain" min="0" max="3" step="0.1" value="1.6" />
+    <label>EXPRESSION GAIN <b><span id="vEGain">1.6</span>×</b></label>
+    <input type="range" id="sEGain" min="0" max="3" step="0.1" value="1.6" />
   </div>
   <div class="slider">
     <label>PREDICTION LEAD <b><span id="vLead">160</span> ms</b></label>
@@ -182,38 +182,38 @@
 </div>
 
 <div id="help" class="panel">
-  <div><b>OPEN PALM</b> <span class="g">→</span> robot mode</div>
-  <div><b>FIST</b> <span class="g">→</span> transform to vehicle</div>
-  <div><b>PEACE (2 FINGERS)</b> <span class="g">→</span> freeze pose</div>
-  <div><b>CURL FINGERS</b> <span class="g">→</span> puppet arms/legs/head</div>
-  <div><b>FAST SWIPE ↔</b> <span class="g">→</span> 360° spin</div>
-  <div><b>FAST FLICK ↕</b> <span class="g">→</span> 180° flip</div>
+  <div><b>TURN / TILT HEAD</b> <span class="g">→</span> steer the robot</div>
+  <div><b>MOUTH WIDE OPEN</b> <span class="g">→</span> transform</div>
+  <div><b>KISS FACE</b> <span class="g">→</span> freeze pose</div>
+  <div><b>BROWS · WINK · SMILE</b> <span class="g">→</span> puppet limbs</div>
+  <div><b>FAST HEAD SHAKE ↔</b> <span class="g">→</span> 360° spin</div>
+  <div><b>FAST NOD ↕</b> <span class="g">→</span> 180° flip</div>
   <div><b>C</b> calibrate · <b>T</b> transform · <b>H</b> hide HUD</div>
 </div>
 
 <div id="toast"></div>
 
 <div id="boot">
-  <h2>MECHA&#8209;HAND</h2>
+  <h2>MECHA&#8209;FACE</h2>
   <p id="bootMsg">
-    A hand-tracked transforming robot toy. Your webcam drives a low-poly mecha — amplified,
-    predicted and spring-loaded so the robot moves <b>faster than your hand</b>, not behind it.
+    A face-tracked transforming robot toy. Your head and expressions drive a low-poly mecha —
+    amplified, predicted and spring-loaded so the robot moves <b>faster than your face</b>, not behind it.
   </p>
   <button id="bStart">ENABLE CAMERA &amp; START</button>
   <button id="bStartMouse" style="min-width:190px">START WITHOUT CAMERA (MOUSE)</button>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/hands.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4.1633559619/face_mesh.js" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3.1675466862/camera_utils.js" crossorigin="anonymous"></script>
 
 <script>
 "use strict";
 
 /* =========================================================================
-   MECHA-HAND — hand-tracked transforming robot toy
+   MECHA-FACE — face-tracked transforming robot toy
    Pipeline per frame:
-     landmarks -> One Euro Filter -> palm basis -> channels(yaw/pitch/roll/x/y/z)
+     landmarks -> One Euro Filter -> head basis -> channels(yaw/pitch/roll/x/y/z)
        -> deadzone -> Holt double-exponential smoothing (level + trend)
        -> predictive lead (level + trend * leadSeconds)
        -> calibration offset -> GAIN amplification (+ gesture impulses)
@@ -281,7 +281,7 @@ class Channel {
     const inst = (this.level - prev) / dt;
     this.trend = beta * inst + (1 - beta) * this.trend;
   }
-  // where the hand will be in `lead` seconds
+  // where the head will be in `lead` seconds
   predicted(lead) { return this.level + this.trend * lead; }
 }
 
@@ -308,18 +308,30 @@ const velWin = new VelWindow();
 /* ------------------------------- config -------------------------------- */
 const P = {
   gain: 2.5,
-  fingerGain: 1.6,
+  exprGain: 1.6,
   leadMs: 160,
   smoothing: 0.45,
   stiffness: 110,
   damping: 0.72,      // zeta: <1 overshoots (eager toy), 1 = critically damped
   deadzoneDeg: 1.5,
 };
+const POS_GX = 4.2, POS_GY = 3.4;     // head travel -> robot travel
+const TOGGLE_COOLDOWN = 0.9;          // s between mouth-open transforms
+
+/* FaceMesh landmark ids we use (of 468). R/L are the subject's own right/left. */
+const LM = {
+  top: 10, chin: 152, cheekR: 234, cheekL: 454, bridge: 168,
+  eyeRo: 33, eyeRi: 133, eyeRt: 159, eyeRb: 145,
+  eyeLo: 263, eyeLi: 362, eyeLt: 386, eyeLb: 374,
+  browR: 105, browL: 334,
+  mouthR: 61, mouthL: 291, lipT: 13, lipB: 14,
+};
+const USED = Object.values(LM);
 
 /* ------------------------------- state --------------------------------- */
 const S = {
-  hasHand: false,
-  lastHandT: -99,
+  hasFace: false,
+  lastFaceT: -99,
   gesture: "—",
   gestureStable: "—",
   gestureCount: 0,
@@ -330,7 +342,8 @@ const S = {
   yawWraps: 0, prevRawYaw: 0, yawInit: false,
   spinOffset: 0,          // gesture-triggered yaw impulses (multiples of 2π)
   flipOffset: 0,          // gesture-triggered pitch impulses (multiples of π)
-  lastSpin: -9, lastFlip: -9,
+  lastSpin: -9, lastFlip: -9, lastToggle: -9,
+  neutral: null,          // neutral-face metrics the expressions are measured against
   tYaw: 0, tPitch: 0, tRoll: 0,        // spring targets (radians)
   tPos: new THREE.Vector3(0, 0, 0),
   tScale: 1,
@@ -344,13 +357,13 @@ const S = {
 
 /* channels */
 const chYaw = new Channel(0), chPitch = new Channel(0), chRoll = new Channel(0);
-const chFinger = [];            // thumb, index, middle, ring, pinky
-for (let i = 0; i < 5; i++) chFinger.push(new Channel(0.03));
-const fingerSpring = [];        // spring state per finger -> limb offset
-for (let i = 0; i < 5; i++) fingerSpring.push({ x: 0, v: 0 });
+const chExpr = [];            // jaw, wink R, wink L, brows, smile
+for (let i = 0; i < 5; i++) chExpr.push(new Channel(0.03));
+const exprSpring = [];        // spring state per expression -> limb offset
+for (let i = 0; i < 5; i++) exprSpring.push({ x: 0, v: 0 });
 const chX = new Channel(0.004), chY = new Channel(0.004), chZ = new Channel(0.006);
-const lmFilters = [];
-for (let i = 0; i < 21; i++) lmFilters.push([new OneEuro(1.0, 0.05), new OneEuro(1.0, 0.05), new OneEuro(1.4, 0.05)]);
+const lmFilters = {};
+for (const i of USED) lmFilters[i] = [new OneEuro(1.0, 0.05), new OneEuro(1.0, 0.05), new OneEuro(1.4, 0.05)];
 
 /* =========================== THREE.JS SCENE ============================== */
 const canvas = document.getElementById("scene");
@@ -445,7 +458,7 @@ root.add(bob); bob.add(body);
 scene.add(root);
 
 /* ---- scudetto chest badge (original, Italian-racing inspired): yellow
-   shield, tricolore band, black rearing robo-horse, "MH" mark. Drawn on a
+   shield, tricolore band, black rearing robo-horse, "MF" mark. Drawn on a
    canvas so the app stays zero-asset. ---- */
 function makeBadgeTexture() {
   const c = document.createElement("canvas");
@@ -484,11 +497,11 @@ function makeBadgeTexture() {
   poly([[148,176],[154,206],[146,242],[162,244],[166,208],[168,174]]);
   // tail
   poly([[184,144],[206,152],[214,182],[202,172],[198,196],[188,164]]);
-  // "MH" mark
+  // "MF" mark
   g.fillStyle = "#141414";
   g.font = "bold 38px Georgia, 'Times New Roman', serif";
   g.textAlign = "center";
-  g.fillText("MH", 128, 284);
+  g.fillText("MF", 128, 284);
   g.restore();
 
   shield();
@@ -629,7 +642,7 @@ applyTransformPose(0);
 /* The spring integrates UNWRAPPED scalar yaw/pitch/roll (so a +2π spin
    impulse is real travel, not a quaternion no-op) and composes the robot's
    quaternion from the spring state every frame — continuous 360° yaw, no
-   gimbal snap, and a stopped hand still gets momentum overshoot + settle.  */
+   gimbal snap, and a stopped head still gets momentum overshoot + settle.  */
 const rot = { y: 0, p: 0, r: 0, vy: 0, vp: 0, vr: 0 };
 const qCur = new THREE.Quaternion();
 const posCur = new THREE.Vector3(0, 0, 0);
@@ -668,76 +681,67 @@ function stepSpring(dt) {
 }
 const rotSpeed = () => Math.hypot(rot.vy, rot.vp, rot.vr);
 
-/* ============================ HAND ANALYSIS ============================= */
+/* ============================ FACE ANALYSIS ============================= */
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
 
-/* landmark -> world-ish coords; x is mirrored so the view is a selfie mirror */
-function toVec(l) { return V(-(l.x - 0.5) * 2, -(l.y - 0.5) * 2, -(l.z || 0) * 2); }
+/* landmark -> world-ish coords; x is mirrored so the view is a selfie mirror.
+   y is scaled by the video aspect so the space is isotropic (FaceMesh z is
+   already in image-width units) — head angles come out undistorted.        */
+let ASPECT = 0.75;
+function toVec(l) { return V(-(l.x - 0.5) * 2, -(l.y - 0.5) * 2 * ASPECT, -(l.z || 0) * 2); }
 
-function fingerStates(pts) {
-  // extended if the tip is further from the wrist than the PIP joint
-  const w = pts[0];
-  const idx = [[2, 3, 4], [5, 6, 8], [9, 10, 12], [13, 14, 16], [17, 18, 20]];
-  const out = [];
-  for (let f = 0; f < 5; f++) {
-    const [mcp, pip, tip] = idx[f];
-    const dTip = pts[tip].distanceTo(w);
-    const dPip = pts[pip].distanceTo(w);
-    if (f === 0) {
-      // thumb: sideways spread from the index MCP is the reliable signal
-      const spread = pts[4].distanceTo(pts[5]);
-      const palm = pts[0].distanceTo(pts[9]);
-      out.push(spread > palm * 0.72 ? 1 : 0);
-    } else {
-      out.push(dTip > dPip * 1.12 ? 1 : 0);
-    }
-  }
-  return out;
+/* scale-free face measurements (3D distances, so they survive head turns) */
+function faceMetrics(p) {
+  const d = (a, b) => Math.max(1e-4, p[a].distanceTo(p[b]));
+  const mid = (a, b) => p[a].clone().add(p[b]).multiplyScalar(0.5);
+  const iod = d(LM.eyeRo, LM.eyeLo);
+  return {
+    mouth: d(LM.lipT, LM.lipB) / d(LM.top, LM.chin),          // jaw opening
+    mouthW: d(LM.mouthR, LM.mouthL) / iod,                    // smile / pucker
+    earR: d(LM.eyeRt, LM.eyeRb) / d(LM.eyeRo, LM.eyeRi),      // eye aspect ratios
+    earL: d(LM.eyeLt, LM.eyeLb) / d(LM.eyeLo, LM.eyeLi),
+    brow: (p[LM.browR].distanceTo(mid(LM.eyeRo, LM.eyeRi)) +
+           p[LM.browL].distanceTo(mid(LM.eyeLo, LM.eyeLi))) / (2 * iod),
+  };
 }
 
-function classify(f) {
-  const n = f.reduce((a, b) => a + b, 0);
-  if (n >= 4) return "OPEN PALM";
-  if (n === 0 || (n === 1 && f[0])) return "FIST";   // thumb alone still reads as fist
-  if (!f[0] && f[1] && f[2] && !f[3] && !f[4]) return "PEACE";  // thumb tucked
-  if (f[1] && !f[2] && !f[3] && !f[4]) return "POINT";
-  return "PARTIAL";
+/* continuous expressions, 0 = relaxed .. 1 = full, measured against the
+   calibrated neutral face `n`. These are the puppet inputs: each one drives
+   robot limbs through the same amplify -> predict -> spring pipeline as the
+   head. A blink closes both eyes, so it cancels out of the winks.          */
+function expressions(m, n) {
+  const closed = (ear, ref) => clamp((0.8 * ref - ear) / (0.45 * ref), 0, 1);
+  const cR = closed(m.earR, n.earR), cL = closed(m.earL, n.earL);
+  const blink = Math.min(cR, cL);
+  const w = m.mouthW / n.mouthW;
+  return {
+    mouth: clamp((m.mouth - 0.02) / 0.2, 0, 1),
+    winkR: cR - blink,
+    winkL: cL - blink,
+    brows: clamp((m.brow / n.brow - 1.04) / 0.2, 0, 1),
+    smile: clamp((w - 1.06) / 0.22, 0, 1),
+    pucker: clamp((0.9 - w) / 0.12, 0, 1),
+  };
 }
 
-/* continuous per-finger curl, 0 = extended .. 1 = fully curled — this is the
-   puppet input: each finger drives a robot limb through the same
-   amplify -> predict -> spring pipeline as the palm */
-function fingerCurls(pts) {
-  const w = pts[0];
-  const idx = [[2, 3, 4], [5, 6, 8], [9, 10, 12], [13, 14, 16], [17, 18, 20]];
-  const out = [];
-  for (let f = 0; f < 5; f++) {
-    if (f === 0) {
-      const spread = pts[4].distanceTo(pts[5]);
-      const palm = Math.max(1e-4, pts[0].distanceTo(pts[9]));
-      out.push(clamp((0.85 - spread / palm) / 0.4, 0, 1));
-    } else {
-      const [, pip, tip] = idx[f];
-      const e = pts[tip].distanceTo(w) / Math.max(1e-4, pts[pip].distanceTo(w));
-      out.push(clamp((1.3 - e) / 0.5, 0, 1));   // ~0 relaxed-open, 1 fully curled
-    }
-  }
-  return out;
+function classify(x) {
+  if (x.mouth > 0.8) return "MOUTH OPEN";
+  if (x.pucker > 0.6 && x.mouth < 0.3) return "KISS";
+  if (x.brows > 0.6) return "BROWS UP";
+  if (x.smile > 0.6) return "SMILE";
+  if (x.winkR > 0.6) return "WINK R";
+  if (x.winkL > 0.6) return "WINK L";
+  return "NEUTRAL";
 }
 
-/* palm orientation basis -> YXZ euler */
+/* head orientation basis -> YXZ euler (x = cheek to cheek, z = out the nose) */
 const _m = new THREE.Matrix4();
 const _q = new THREE.Quaternion();
 const _eu = new THREE.Euler();
-function palmOrientation(pts, handSign) {
-  const wr = pts[0];
-  const up = pts[9].clone().sub(wr).normalize();                       // wrist -> middle MCP
-  const a = pts[5].clone().sub(wr);
-  const b = pts[17].clone().sub(wr);
-  let nrm = a.clone().cross(b).multiplyScalar(handSign).normalize();   // out of the palm
-  // Gram-Schmidt into a clean right-handed basis (x=right, y=up, z=normal)
-  nrm.addScaledVector(up, -nrm.dot(up)).normalize();
-  const right = up.clone().cross(nrm).normalize();
+function headOrientation(p) {
+  const right = p[LM.cheekR].clone().sub(p[LM.cheekL]).normalize();
+  const nrm = right.clone().cross(p[LM.top].clone().sub(p[LM.chin])).normalize();
+  const up = nrm.clone().cross(right);                  // clean right-handed basis
   _m.makeBasis(right, up, nrm);
   _q.setFromRotationMatrix(_m);
   _eu.setFromQuaternion(_q, "YXZ");
@@ -760,45 +764,43 @@ function reanchor(y, p, r, x, yy, z) {
   S.calYaw = y - (S.tYaw - S.spinOffset) / P.gain;
   S.calPitch = p - clamp(S.tPitch - S.flipOffset, -Math.PI, Math.PI) / P.gain;
   S.calRoll = r - S.tRoll / P.gain;
-  S.calX = x - S.tPos.x / 3.1;
-  S.calY = yy - S.tPos.y / 2.0;
+  S.calX = x - S.tPos.x / POS_GX;
+  S.calY = yy - S.tPos.y / POS_GY;
   S.calZ = z;
+}
+
+function toggleMode() {
+  S.mode = S.mode === "ROBOT" ? "VEHICLE" : "ROBOT";
+  toast(S.mode + " MODE");
 }
 
 /* ============================== TRACKING =============================== */
 const video = document.getElementById("cam");
 const overlay = document.getElementById("overlay");
 const octx = overlay.getContext("2d");
-const CONNECTIONS = [
-  [0,1],[1,2],[2,3],[3,4],
-  [0,5],[5,6],[6,7],[7,8],
-  [5,9],[9,10],[10,11],[11,12],
-  [9,13],[13,14],[14,15],[15,16],
-  [13,17],[17,18],[18,19],[19,20],[0,17],
-];
 
 let lastTrackT = 0;
-function drawSkeleton(lms, fingers) {
+function drawFace(lms, x) {
   const w = overlay.width, h = overlay.height;
   octx.clearRect(0, 0, w, h);
   if (!lms) return;
-  octx.lineWidth = Math.max(1.5, w / 150);
-  octx.strokeStyle = "rgba(0,229,255,0.85)";
-  octx.beginPath();
-  for (const [a, b] of CONNECTIONS) {
-    octx.moveTo(lms[a].x * w, lms[a].y * h);
-    octx.lineTo(lms[b].x * w, lms[b].y * h);
-  }
-  octx.stroke();
-  const tips = [4, 8, 12, 16, 20];
-  for (let i = 0; i < lms.length; i++) {
-    const ti = tips.indexOf(i);
-    const ext = ti >= 0 && fingers && fingers[ti];
-    octx.fillStyle = ti >= 0 ? (ext ? "#4dffa6" : "#ff5a3d") : "#ffd23f";
-    octx.beginPath();
-    octx.arc(lms[i].x * w, lms[i].y * h, ti >= 0 ? w / 78 : w / 130, 0, Math.PI * 2);
-    octx.fill();
-  }
+  const s = Math.max(1, w / 200);
+  octx.fillStyle = "rgba(0,229,255,0.6)";
+  for (const l of lms) octx.fillRect(l.x * w - s / 2, l.y * h - s / 2, s, s);
+  // feature points light up green as their expression engages
+  const dots = (ids, v) => {
+    octx.fillStyle = v > 0.5 ? "#4dffa6" : "#ffd23f";
+    for (const i of ids) {
+      octx.beginPath();
+      octx.arc(lms[i].x * w, lms[i].y * h, w / 110, 0, Math.PI * 2);
+      octx.fill();
+    }
+  };
+  dots([LM.eyeRo, LM.eyeRi, LM.eyeRt, LM.eyeRb], x.winkR);
+  dots([LM.eyeLo, LM.eyeLi, LM.eyeLt, LM.eyeLb], x.winkL);
+  dots([LM.browR, LM.browL], x.brows);
+  dots([LM.mouthR, LM.mouthL], x.smile);
+  dots([LM.lipT, LM.lipB], x.mouth);
 }
 
 function onResults(res) {
@@ -807,51 +809,55 @@ function onResults(res) {
   lastTrackT = t;
   S.trackFps = S.trackFps ? lerp(S.trackFps, 1 / dtT, 0.15) : 1 / dtT;
 
-  if (overlay.width !== video.videoWidth && video.videoWidth) {
-    overlay.width = Math.min(320, video.videoWidth);
-    overlay.height = overlay.width * (video.videoHeight / video.videoWidth);
+  if (video.videoWidth) {
+    ASPECT = video.videoHeight / video.videoWidth;
+    const ow = Math.min(320, video.videoWidth);
+    if (overlay.width !== ow) { overlay.width = ow; overlay.height = ow * ASPECT; }
   }
 
-  const lms = res.multiHandLandmarks && res.multiHandLandmarks[0];
+  const lms = res.multiFaceLandmarks && res.multiFaceLandmarks[0];
   if (!lms) {
-    S.hasHand = false;
+    S.hasFace = false;
     velWin.clear();
-    drawSkeleton(null);
-    setPip("NO HAND", "var(--warn)");
+    drawFace(null);
+    setPip("NO FACE", "var(--warn)");
     return;
   }
 
-  const label = (res.multiHandedness && res.multiHandedness[0] && res.multiHandedness[0].label) || "Right";
-  const handSign = label === "Right" ? 1 : -1;
-
-  // 1) One Euro filter every landmark BEFORE anything is amplified
-  const pts = [];
-  for (let i = 0; i < 21; i++) {
+  // 1) One Euro filter every landmark we use BEFORE anything is amplified
+  const pts = {};
+  for (const i of USED) {
     const f = lmFilters[i];
     const l = lms[i];
-    pts.push(toVec({ x: f[0].filter(l.x, t), y: f[1].filter(l.y, t), z: f[2].filter(l.z || 0, t) }));
+    pts[i] = toVec({ x: f[0].filter(l.x, t), y: f[1].filter(l.y, t), z: f[2].filter(l.z || 0, t) });
   }
 
-  const fingers = fingerStates(pts);
-  const curls = fingerCurls(pts);
-  drawSkeleton(lms, fingers);
-  const g = classify(fingers);
+  const m = faceMetrics(pts);
+  if (!S.neutral) S.neutral = m;            // first sighting = neutral face (C recalibrates)
+  const x = expressions(m, S.neutral);
+  const curls = [x.mouth, x.winkR, x.winkL, x.brows, x.smile];
+  drawFace(lms, x);
+
+  // discrete gestures: debounced, and MOUTH OPEN toggles on its rising edge
+  const g = classify(x);
   if (g === S.gesture) S.gestureCount++;
   else { S.gesture = g; S.gestureCount = 0; }
-  if (S.gestureCount >= 2) S.gestureStable = g;
+  if (S.gestureCount >= 2 && g !== S.gestureStable) {
+    S.gestureStable = g;
+    if (g === "MOUTH OPEN" && t - S.lastToggle > TOGGLE_COOLDOWN) { S.lastToggle = t; toggleMode(); }
+  }
+  S.frozen = S.gestureStable === "KISS";
 
-  const o = palmOrientation(pts, handSign);
+  const o = headOrientation(pts);
   const yawC = unwrapYaw(o.yaw);
 
-  // palm centre + apparent size (size => depth)
-  const c = pts[0].clone().add(pts[9]).add(pts[5]).add(pts[17]).multiplyScalar(0.25);
-  let minX = 9, maxX = -9, minY = 9, maxY = -9;
-  for (const p of pts) { minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x); minY = Math.min(minY, p.y); maxY = Math.max(maxY, p.y); }
-  const size = Math.hypot(maxX - minX, maxY - minY);
+  // head centre + apparent size (size => depth)
+  const c = pts[LM.bridge];
+  const size = pts[LM.cheekR].distanceTo(pts[LM.cheekL]);
 
-  const firstTouch = !S.hasHand;
-  S.hasHand = true;
-  S.lastHandT = t;
+  const firstTouch = !S.hasFace;
+  S.hasFace = true;
+  S.lastFaceT = t;
   setPip("TRACKING", "var(--good)");
 
   const dzr = P.deadzoneDeg / DEG;
@@ -871,8 +877,8 @@ function onResults(res) {
 
   const alpha = lerp(0.9, 0.12, P.smoothing);
   for (let i = 0; i < 5; i++) {
-    if (firstTouch) chFinger[i].reset(curls[i]);
-    chFinger[i].update(curls[i], dtT, alpha);
+    if (firstTouch) chExpr[i].reset(curls[i]);
+    chExpr[i].update(curls[i], dtT, alpha);
   }
   chYaw.update(yawC, dtT, alpha);
   chPitch.update(o.pitch, dtT, alpha);
@@ -881,31 +887,29 @@ function onResults(res) {
   chY.update(c.y, dtT, alpha);
   chZ.update(size, dtT, alpha);
 
-  // gestures driven by raw (pre-filter) palm velocity over the last ~5 frames
-  const rc = toVec(lms[0]).add(toVec(lms[9])).add(toVec(lms[5])).add(toVec(lms[17])).multiplyScalar(0.25);
-  velWin.push(t, rc.x, rc.y);
+  // impulses driven by raw (pre-filter) head angular velocity over the last ~5 frames
+  const rawPts = {};
+  for (const i of [LM.cheekR, LM.cheekL, LM.top, LM.chin]) rawPts[i] = toVec(lms[i]);
+  const ro = headOrientation(rawPts);
+  velWin.push(t, ro.yaw, -ro.pitch);
   triggerImpulses(t);
 
-  // mode from stable gesture
-  S.frozen = S.gestureStable === "PEACE";
-  if (S.gestureStable === "FIST" && S.mode !== "VEHICLE") { S.mode = "VEHICLE"; toast("VEHICLE MODE"); }
-  if (S.gestureStable === "OPEN PALM" && S.mode !== "ROBOT") { S.mode = "ROBOT"; toast("ROBOT MODE"); }
-
   S.rawYpr = o;
-  S.rawSize = size;
+  S.rawMetrics = m;
 }
 
 // the PiP <video> is CSS-mirrored, so mirror the overlay to match
 overlay.style.transform = "scaleX(-1)";
 
-const SWIPE_V = 1.8, FLICK_V = 1.6, IMPULSE_COOLDOWN = 0.7;
+/* thresholds in rad/s of head rotation (mouse mode scales its pointer to match) */
+const SHAKE_V = 2.8, NOD_V = 2.4, IMPULSE_COOLDOWN = 0.7;
 function triggerImpulses(t) {
   const { vx, vy } = velWin.vel();
-  if (Math.abs(vx) > SWIPE_V && Math.abs(vx) > Math.abs(vy) * 1.25 && t - S.lastSpin > IMPULSE_COOLDOWN) {
+  if (Math.abs(vx) > SHAKE_V && Math.abs(vx) > Math.abs(vy) * 1.25 && t - S.lastSpin > IMPULSE_COOLDOWN) {
     S.spinOffset += Math.sign(vx) * Math.PI * 2;   // full 360°, carried by the spring
     S.lastSpin = t; velWin.clear();
     toast("360° SPIN");
-  } else if (Math.abs(vy) > FLICK_V && Math.abs(vy) > Math.abs(vx) * 1.25 && t - S.lastFlip > IMPULSE_COOLDOWN) {
+  } else if (Math.abs(vy) > NOD_V && Math.abs(vy) > Math.abs(vx) * 1.25 && t - S.lastFlip > IMPULSE_COOLDOWN) {
     S.flipOffset += Math.sign(vy) * Math.PI;       // 180° flip
     S.lastFlip = t; velWin.clear();
     toast("180° FLIP");
@@ -916,9 +920,9 @@ function triggerImpulses(t) {
 function updateTargets(dt) {
   const t = nowSec();
   const lead = P.leadMs / 1000;
-  const stale = t - S.lastHandT;
+  const stale = t - S.lastFaceT;
 
-  if (S.hasHand && stale < 0.35 && !S.frozen) {
+  if (S.hasFace && stale < 0.35 && !S.frozen) {
     const py = chYaw.predicted(lead);
     const pp = chPitch.predicted(lead);
     const pr = chRoll.predicted(lead);
@@ -926,19 +930,19 @@ function updateTargets(dt) {
     const pyy = chY.predicted(lead);
     const pz = chZ.predicted(lead);
 
-    // GAIN: robot delta = hand delta × gain (yaw stays continuous/unbounded)
+    // GAIN: robot delta = head delta × gain (yaw stays continuous/unbounded)
     S.tYaw = (py - S.calYaw) * P.gain + S.spinOffset;
     S.tPitch = clamp((pp - S.calPitch) * P.gain, -Math.PI, Math.PI) + S.flipOffset;
     S.tRoll = clamp((pr - S.calRoll) * P.gain, -Math.PI * 0.85, Math.PI * 0.85);
 
-    S.tPos.x = clamp((px - S.calX) * 3.1, -3.4, 3.4);
-    S.tPos.y = clamp((pyy - S.calY) * 2.0, -1.1, 1.6);
+    S.tPos.x = clamp((px - S.calX) * POS_GX, -3.4, 3.4);
+    S.tPos.y = clamp((pyy - S.calY) * POS_GY, -1.1, 1.6);
     S.tPos.z = clamp((pz - S.calZ) * 4.5, -2.2, 2.2);
     S.tScale = clamp(1 + (pz - S.calZ) * 1.5, 0.55, 1.75);
 
     S.leadDeg = chYaw.trend * lead * P.gain * DEG;
     S.idleYaw = S.tYaw;
-  } else if (S.hasHand && S.frozen) {
+  } else if (S.hasFace && S.frozen) {
     S.leadDeg = 0;                                    // hold current target
   } else {
     // tracking lost -> ease into an idle spin, never snap or freeze
@@ -955,7 +959,7 @@ function updateTargets(dt) {
 }
 
 /* ================================ MOUSE ================================= */
-/* Graceful fallback / desk-testing rig: the pointer synthesises a palm and
+/* Graceful fallback / desk-testing rig: the pointer synthesises a head and
    feeds the exact same amplify->predict->spring pipeline.                  */
 const mouse = { x: 0.5, y: 0.5, down: false, inside: false };
 window.addEventListener("pointermove", e => {
@@ -978,8 +982,8 @@ function mouseSample() {
   const roll = (mouse.x - 0.5) * 0.5;
   const cx = (0.5 - mouse.x) * -1.2, cy = (0.5 - mouse.y) * 1.2;
 
-  const firstTouch = !S.hasHand;
-  S.hasHand = true; S.lastHandT = t;
+  const firstTouch = !S.hasFace;
+  S.hasFace = true; S.lastFaceT = t;
   if (firstTouch) {
     chYaw.reset(yaw); chPitch.reset(pitch); chRoll.reset(roll);
     chX.reset(cx); chY.reset(cy); chZ.reset(0.5);
@@ -990,13 +994,12 @@ function mouseSample() {
   chYaw.update(yaw, dt, alpha); chPitch.update(pitch, dt, alpha); chRoll.update(roll, dt, alpha);
   chX.update(cx, dt, alpha); chY.update(cy, dt, alpha); chZ.update(0.5, dt, alpha);
 
-  velWin.push(t, cx, cy);
+  velWin.push(t, cx * 1.5, cy * 1.5);   // pointer speed in head-rotation terms
   triggerImpulses(t);
 
-  const g = mouse.down ? "FIST" : "OPEN PALM";
+  const g = mouse.down ? "CLICK" : "POINTER";
   S.gesture = S.gestureStable = g;
-  if (g === "FIST" && S.mode !== "VEHICLE") { S.mode = "VEHICLE"; toast("VEHICLE MODE"); }
-  if (g === "OPEN PALM" && S.mode !== "ROBOT") { S.mode = "ROBOT"; toast("ROBOT MODE"); }
+  if ((g === "CLICK") !== (S.mode === "VEHICLE")) toggleMode();
   S.rawYpr = { yaw, pitch, roll };
 }
 
@@ -1030,10 +1033,10 @@ function tick() {
 
   S.wheelSpin += (posVel.length() * 1.6 + rotSpeed() * 0.5 + 1.5 * S.transformT) * dt;
   applyTransformPose(S.transformT);
-  applyFingerPose(dt);
+  applyFacePose(dt);
 
   // idle life: breathing bob + slow head sway when nothing is driving us
-  const idleAmt = clamp((t - S.lastHandT - 0.3) / 1.0, 0, 1);
+  const idleAmt = clamp((t - S.lastFaceT - 0.3) / 1.0, 0, 1);
   bob.position.y = Math.sin(t * 1.6) * 0.05 * (0.4 + 0.6 * idleAmt);
   bob.rotation.z = Math.sin(t * 0.9) * 0.012 * idleAmt;
   headPivot.rotation.y += (Math.sin(t * 0.6) * 0.4 * idleAmt - headPivot.rotation.y) * dt * 2.2;
@@ -1044,21 +1047,21 @@ function tick() {
   updateHud();
 }
 
-/* ---------------- finger puppet: curls -> limb articulation -------------
+/* ---------------- face puppet: expressions -> limb articulation ---------
    Runs after applyTransformPose so offsets stack on the base pose, and
    fades out as the fold to vehicle progresses. Amplified + predicted like
-   the palm, sprung with the same stiffness so limbs feel just as eager.  */
-function applyFingerPose(dt) {
+   the head, sprung with the same stiffness so limbs feel just as eager.  */
+function applyFacePose(dt) {
   const t = nowSec();
-  const fresh = S.hasHand && !S.mouseMode && t - S.lastHandT < 0.35;
+  const fresh = S.hasFace && !S.mouseMode && t - S.lastFaceT < 0.35;
   const k = P.stiffness * 1.25;
   const c = 2 * P.damping * Math.sqrt(k);
   const lead = P.leadMs / 1000;
 
   for (let i = 0; i < 5; i++) {
-    const sp = fingerSpring[i];
+    const sp = exprSpring[i];
     let target;
-    if (fresh && !S.frozen) target = clamp(chFinger[i].predicted(lead) * P.fingerGain, 0, 1.12);
+    if (fresh && !S.frozen) target = clamp(chExpr[i].predicted(lead) * P.exprGain, 0, 1.12);
     else if (fresh && S.frozen) target = sp.x;                 // hold
     else target = 0;                                           // relax to idle
     const n = dt > 1 / 45 ? 2 : 1;
@@ -1066,34 +1069,35 @@ function applyFingerPose(dt) {
   }
 
   const f = 1 - easeInOut(clamp(S.transformT, 0, 1));          // no puppet in vehicle
-  const [th, ix, md, rg, pk] = fingerSpring.map(sp => sp.x * f);
+  const [jaw, wr, wl, br, sm] = exprSpring.map(sp => sp.x * f);
 
-  // thumb -> head nod + slight cock
-  headPivot.rotation.x += th * 0.6;
-  headPivot.rotation.z += th * 0.18;
-  // index -> right arm raise + elbow curl, middle -> left arm (mirror view)
-  armR.sh.rotation.x += -2.0 * ix;
-  armR.el.rotation.x += -1.7 * ix;
-  armL.sh.rotation.x += -2.0 * md;
-  armL.el.rotation.x += -1.7 * md;
-  // ring -> right leg march, pinky -> left leg
-  legR.hip.rotation.x += -1.15 * rg;
-  legR.kn.rotation.x += 1.5 * rg;
-  legL.hip.rotation.x += -1.15 * pk;
-  legL.kn.rotation.x += 1.5 * pk;
+  // jaw drop -> head tips back (robot "talks" along with you)
+  headPivot.rotation.x += -0.5 * jaw;
+  // brows -> both arms up; a wink adds its own side's arm (mirror view)
+  const aR = Math.min(1.12, br + wr), aL = Math.min(1.12, br + wl);
+  armR.sh.rotation.x += -2.0 * aR;
+  armR.el.rotation.x += -1.7 * aR;
+  armL.sh.rotation.x += -2.0 * aL;
+  armL.el.rotation.x += -1.7 * aL;
+  // smile -> happy march in place, legs alternating
+  const ph = 0.5 + 0.5 * Math.sin(t * 9);
+  legR.hip.rotation.x += -1.15 * sm * ph;
+  legR.kn.rotation.x += 1.5 * sm * ph;
+  legL.hip.rotation.x += -1.15 * sm * (1 - ph);
+  legL.kn.rotation.x += 1.5 * sm * (1 - ph);
 }
 
 /* ================================= HUD ================================== */
 const el = id => document.getElementById(id);
 const rMode = el("rMode"), rGesture = el("rGesture"), rTrackFps = el("rTrackFps"),
   rRenderFps = el("rRenderFps"), rYpr = el("rYpr"), rRobotYaw = el("rRobotYaw"),
-  rLead = el("rLead"), rFingers = el("rFingers");
+  rLead = el("rLead"), rExpr = el("rExpr");
 
 let hudAcc = 0;
 function updateHud() {
   hudAcc++;
   if (hudAcc % 4) return;
-  const idle = !S.hasHand || nowSec() - S.lastHandT > 0.35;
+  const idle = !S.hasFace || nowSec() - S.lastFaceT > 0.35;
   const label = S.frozen ? "FROZEN" : (idle ? "IDLE" : S.mode);
   rMode.textContent = label;
   rMode.className = "mode-pill " + (idle || S.frozen ? "m-idle" : S.mode === "VEHICLE" ? "m-vehicle" : "m-robot");
@@ -1106,7 +1110,7 @@ function updateHud() {
   rRobotYaw.textContent = `${ry.toFixed(0)}°`;
   rLead.textContent = `${S.leadDeg >= 0 ? "+" : ""}${S.leadDeg.toFixed(0)}°`;
   const BLOCKS = "▁▂▃▅▆█";
-  rFingers.textContent = fingerSpring.map(sp =>
+  rExpr.textContent = exprSpring.map(sp =>
     BLOCKS[clamp(Math.round(sp.x * 5), 0, 5)]).join("");
 }
 
@@ -1132,7 +1136,7 @@ function bindSlider(id, out, key, fmt) {
   apply();
 }
 bindSlider("sGain", "vGain", "gain", v => v.toFixed(1));
-bindSlider("sFGain", "vFGain", "fingerGain", v => v.toFixed(1));
+bindSlider("sEGain", "vEGain", "exprGain", v => v.toFixed(1));
 bindSlider("sLead", "vLead", "leadMs", v => v.toFixed(0));
 bindSlider("sSmooth", "vSmooth", "smoothing", v => v.toFixed(2));
 bindSlider("sStiff", "vStiff", "stiffness", v => v.toFixed(0));
@@ -1140,10 +1144,7 @@ bindSlider("sDamp", "vDamp", "damping", v => v.toFixed(2));
 
 /* buttons */
 el("bCal").onclick = () => calibrate();
-el("bTransform").onclick = () => {
-  S.mode = S.mode === "ROBOT" ? "VEHICLE" : "ROBOT";
-  toast(S.mode + " MODE");
-};
+el("bTransform").onclick = toggleMode;
 el("bReset").onclick = () => {
   S.spinOffset = 0; S.flipOffset = 0;
   S.tYaw = S.tPitch = S.tRoll = 0;
@@ -1155,7 +1156,7 @@ el("bReset").onclick = () => {
 el("bMouse").onclick = () => {
   S.mouseMode = !S.mouseMode;
   el("bMouse").classList.toggle("on", S.mouseMode);
-  S.hasHand = false;
+  S.hasFace = false;
   toast(S.mouseMode ? "MOUSE MODE ON" : "MOUSE MODE OFF");
 };
 
@@ -1164,6 +1165,7 @@ function calibrate(silent) {
     S.calYaw = chYaw.level; S.calPitch = chPitch.level; S.calRoll = chRoll.level;
     S.calX = chX.level; S.calY = chY.level; S.calZ = chZ.level;
   }
+  if (S.rawMetrics) S.neutral = S.rawMetrics;       // current face = neutral expression
   S.spinOffset = 0; S.flipOffset = 0;
   if (!silent) toast("CALIBRATED — NEUTRAL SET");
 }
@@ -1185,22 +1187,22 @@ window.addEventListener("resize", () => {
 
 /* ============================== BOOTSTRAP =============================== */
 async function startCamera() {
-  if (typeof Hands === "undefined" || typeof Camera === "undefined") {
+  if (typeof FaceMesh === "undefined" || typeof Camera === "undefined") {
     throw new Error("MediaPipe failed to load (offline or blocked CDN).");
   }
-  const hands = new Hands({
-    locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/${f}`,
+  const faceMesh = new FaceMesh({
+    locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4.1633559619/${f}`,
   });
-  hands.setOptions({
-    maxNumHands: 1,
-    modelComplexity: isMobile ? 0 : 1,
+  faceMesh.setOptions({
+    maxNumFaces: 1,
+    refineLandmarks: false,
     minDetectionConfidence: 0.6,
     minTrackingConfidence: 0.6,
   });
-  hands.onResults(onResults);
+  faceMesh.onResults(onResults);
 
   const cam = new Camera(video, {
-    onFrame: async () => { await hands.send({ image: video }); },
+    onFrame: async () => { await faceMesh.send({ image: video }); },
     width: isMobile ? 480 : 640,
     height: isMobile ? 360 : 480,
   });
@@ -1221,7 +1223,7 @@ el("bStart").onclick = async () => {
   try {
     await startCamera();
     startLoop();
-    toast("SHOW YOUR HAND TO THE CAMERA");
+    toast("SHOW YOUR FACE TO THE CAMERA");
   } catch (err) {
     el("bootMsg").innerHTML =
       `<span class="err">Camera unavailable: ${String(err && err.message || err)}</span><br />` +

@@ -51,6 +51,9 @@
   #bar { height: 3px; background: rgba(255, 255, 255, 0.12); border-radius: 3px; margin-top: 3px; overflow: hidden; }
   #bar i { display: block; height: 100%; width: 0; background: var(--red); }
 
+  select, input[type=range] { width: 100%; font: inherit; font-size: 10px; }
+  select { color: var(--fg); background: rgba(255, 59, 48, 0.1); border: 1px solid var(--line); border-radius: 6px; padding: 5px; }
+  input[type=range] { accent-color: var(--red); margin: 0; }
   .btns { display: flex; gap: 6px; margin-top: 10px; }
   button {
     flex: 1 1 auto; cursor: pointer; font: inherit; font-size: 10px; letter-spacing: 0.9px;
@@ -70,6 +73,11 @@
   #boot button { flex: 0 0 auto; min-width: 200px; padding: 10px 18px; font-size: 11px; }
   .hidden { display: none !important; }
 
+  #detail { top: 12px; right: 12px; width: 300px; padding: 10px 12px 12px; font-size: 11px; max-height: calc(100% - 24px); overflow: hidden; }
+  #detail .row .v { white-space: nowrap; }
+  #growth { line-height: 1.75; }
+
+  @media (max-width: 980px) { #detail { display: none; } }
   @media (max-width: 780px) { #hud { width: 216px; font-size: 10px; } #log { height: 50px; } }
 </style>
 
@@ -77,7 +85,7 @@
 <video id="cam" playsinline muted autoplay></video>
 
 <div id="hud" class="panel">
-  <h1>FACE&#8209;TRACK <span>v3.0</span></h1>
+  <h1>FACE&#8209;TRACK <span>v4.0</span></h1>
   <div class="row"><span class="k">FACE</span><span class="v" id="rFace">—</span></div>
   <div class="row"><span class="k">TRACKING</span><span class="v"><span id="rFps">0</span> fps</span></div>
   <div class="row"><span class="k">HEAD</span><span class="v" id="rHead">—</span></div>
@@ -96,6 +104,10 @@
   <div class="sep"></div>
   <div class="cap">EVENTS</div>
   <div id="log"></div>
+  <div class="sep"></div>
+  <div class="cap">CAMERA <span id="camRes"></span></div>
+  <select id="camSel"></select>
+  <div id="zoomRow" class="hidden"><div class="cap" style="margin-top:7px">ZOOM <span id="zoomVal"></span></div><input type="range" id="zoom" /></div>
   <div class="btns">
     <button id="bMesh" class="act">MESH</button>
     <button id="bLabels" class="act">LABELS</button>
@@ -103,21 +115,29 @@
   </div>
 </div>
 
+<div id="detail" class="panel">
+  <div class="cap">DETAIL SCAN</div>
+  <div id="detailRows"><div class="row"><span class="k">SCALE</span><span class="v">—</span></div></div>
+  <div class="sep"></div>
+  <div class="cap">GROWTH LOG</div>
+  <div id="growth"><div class="off">measuring…</div></div>
+  <div class="btns"><button id="bExport">EXPORT LOG (CSV)</button></div>
+</div>
+
 <div id="boot">
   <h2>FACE&#8209;TRACK</h2>
   <p id="bootMsg">
     Live face tracker. A red box locks onto your face and follows every feature — eyes, irises,
-    brows, nose, mouth — labels what each one is doing, tracks where your eyes move, and names
-    what you're wearing (glasses, hat, headphones…). Everything runs in your browser; no video leaves this page.
+    brows, nose, mouth — tracks where your eyes move, names what you're wearing, and scans the fine
+    detail: skin spots, teeth, tongue, tooth gems, eyebrow angles and slits, moustache, beard and hair,
+    logged day by day. Everything runs in your browser; no video leaves this page.
   </p>
   <button id="bStart">ENABLE CAMERA &amp; START</button>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4.1633559619/face_mesh.js" crossorigin="anonymous"></script>
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3.1675466862/camera_utils.js" crossorigin="anonymous"></script>
 
 <!-- accessory-recognition label embeddings; regenerate with tools/build-wear-data.mjs -->
-<script id="wearData" type="application/json">{"model":"Xenova/mobileclip_s0","dim":512,"nulls":3,"groups":[{"key":"eyes","labels":["GLASSES","SUNGLASSES",null]},{"key":"head","labels":["CAP","BEANIE","HAT","HOOD","HEADSCARF",null]},{"key":"ears","labels":["HEADPHONES","EARBUDS",null]},{"key":"mask","labels":["FACE MASK",null]},{"key":"hair","labels":["BEARD","MUSTACHE",null]}],"emb":"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"}</script>
+<script id="wearData" type="application/json">{"model":"Xenova/mobileclip_s0","dim":512,"nulls":3,"groups":[{"key":"eyes","labels":["GLASSES","SUNGLASSES",null]},{"key":"head","labels":["CAP","BEANIE","HAT","HOOD","HEADSCARF",null]},{"key":"ears","labels":["HEADPHONES","EARBUDS",null]},{"key":"mask","labels":["FACE MASK",null]},{"key":"tongue","labels":["TONGUE OUT",null,null]},{"key":"hair","labels":["BEARD","MUSTACHE",null]}],"emb":"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"}</script>
 
 <!-- accessory recogniser: runs MobileCLIP's vision tower in a worker so tracking never stutters -->
 <script id="wearWorker" type="text/plain">
@@ -178,7 +198,7 @@ self.onmessage = async e => {
 /* =========================================================================
    FACE-TRACK — live face / eye / accessory tracker
    Per camera frame:
-     MediaPipe FaceMesh (478 landmarks incl. irises)
+     MediaPipe Face Landmarker (478 landmarks incl. irises)
        -> face box + per-feature boxes (eyes, brows, nose, mouth)
        -> head pose, eye openness, blinks, iris position -> gaze, mouth, brows
        -> motion (head + eye speed) and an event log of what just changed
@@ -216,16 +236,19 @@ const EYE = {
 };
 const LM = { top: 10, chin: 152, cheekR: 234, cheekL: 454, nose: 1, browR: 105, browL: 334, mouthR: 61, mouthL: 291, lipT: 13, lipB: 14 };
 const NOSE = [1, 2, 4, 5, 6, 19, 94, 168, 195, 197, 48, 278, 64, 294, 98, 327, 129, 358];
-const uniq = conn => [...new Set(conn.flat())];
-let SETS = null, CONTOURS = null;        // filled once the FaceMesh script has loaded
-function buildSets() {
-  SETS = {
-    eyeR: uniq(FACEMESH_RIGHT_EYE), eyeL: uniq(FACEMESH_LEFT_EYE),
-    browR: uniq(FACEMESH_RIGHT_EYEBROW), browL: uniq(FACEMESH_LEFT_EYEBROW),
-    mouth: uniq(FACEMESH_LIPS), nose: NOSE,
-  };
-  CONTOURS = [FACEMESH_FACE_OVAL, FACEMESH_RIGHT_EYE, FACEMESH_LEFT_EYE, FACEMESH_RIGHT_EYEBROW, FACEMESH_LEFT_EYEBROW, FACEMESH_LIPS];
-}
+const RING = {                              // ordered outlines (closed loops) of each feature
+  oval: [10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288, 397, 365, 379, 378, 400, 377, 152, 148, 176, 149, 150, 136, 172, 58, 132, 93, 234, 127, 162, 21, 54, 103, 67, 109],
+  eyeR: [33, 7, 163, 144, 145, 153, 154, 155, 133, 173, 157, 158, 159, 160, 161, 246],
+  eyeL: [263, 249, 390, 373, 374, 380, 381, 382, 362, 398, 384, 385, 386, 387, 388, 466],
+  browR: [70, 63, 105, 66, 107, 55, 65, 52, 53, 46],
+  browL: [300, 293, 334, 296, 336, 285, 295, 282, 283, 276],
+  lips: [61, 146, 91, 181, 84, 17, 314, 405, 321, 375, 291, 409, 270, 269, 267, 0, 37, 39, 40, 185],
+  inner: [78, 191, 80, 81, 82, 13, 312, 311, 310, 415, 308, 324, 318, 402, 317, 14, 87, 178, 88, 95],
+  mous: [61, 92, 165, 167, 164, 393, 391, 322, 291, 409, 270, 269, 267, 0, 37, 39, 40, 185],
+  beard: [172, 136, 150, 149, 176, 148, 152, 377, 400, 378, 379, 365, 397, 291, 375, 321, 405, 314, 17, 84, 181, 91, 146, 61],
+};
+const SETS = { eyeR: RING.eyeR, eyeL: RING.eyeL, browR: RING.browR, browL: RING.browL, mouth: RING.lips, nose: NOSE };
+const CONTOURS = [RING.oval, RING.eyeR, RING.eyeL, RING.browR, RING.browL, RING.lips, RING.inner];
 
 /* -------------------------------- state --------------------------------- */
 const S = {
@@ -418,7 +441,7 @@ function draw(image, lms, info) {
     for (let i = 0; i < 468; i++) ctx.fillRect(X(lms[i]) - 0.6, Y(lms[i]) - 0.6, 1.2, 1.2);
     ctx.strokeStyle = "rgba(0,229,255,0.75)"; ctx.lineWidth = 1;
     ctx.beginPath();
-    for (const c of CONTOURS) for (const [a, b] of c) { ctx.moveTo(X(lms[a]), Y(lms[a])); ctx.lineTo(X(lms[b]), Y(lms[b])); }
+    for (const c of CONTOURS) { c.forEach((i, n) => (n ? ctx.lineTo(X(lms[i]), Y(lms[i])) : ctx.moveTo(X(lms[i]), Y(lms[i])))); ctx.closePath(); }
     ctx.stroke();
   }
 
@@ -438,7 +461,9 @@ function draw(image, lms, info) {
   featureBox(lms, SETS.nose, "NOSE", false, 4, true);
   featureBox(lms, SETS.eyeR, eyeText("RIGHT", info.shutR), eyesMoving || info.shutR, 4, true);
   featureBox(lms, SETS.eyeL, eyeText("LEFT", info.shutL), eyesMoving || info.shutL, 4, true);
-  featureBox(lms, SETS.mouth, "MOUTH · " + S.mouthLabel + (S.smiling ? " · SMILE" : ""), S.mouthLabel !== "CLOSED" || S.smiling, 4, true);
+  const tongueOut = S.wear.tongue && S.wear.tongue.on;
+  const mouthBits = (D.teeth > 0.2 ? " · TEETH" : "") + (tongueOut ? " · TONGUE OUT" : D.tongue > 0.45 ? " · TONGUE" : "") + (S.smiling ? " · SMILE" : "");
+  featureBox(lms, SETS.mouth, "MOUTH · " + S.mouthLabel + mouthBits, S.mouthLabel !== "CLOSED" || !!mouthBits, 4, true);
 
   // irises: ring, pupil, motion trail and a gaze arrow
   for (const side of ["R", "L"]) {
@@ -460,10 +485,12 @@ function draw(image, lms, info) {
     ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(px - info.gx * len, py + info.gy * len); ctx.stroke();
   }
 
+  drawDetail(lms, info);
+
   // what the recogniser says you are wearing: tags down the side of the face box,
   // each at the height of the thing it names, with a leader line back to it
   if (S.showLabels) {
-    const at = { head: y0 + 8, eyes: Y(lms[EYE.R.top]), ears: Y(lms[LM.nose]), mask: Y(lms[LM.lipT]), hair: Y(lms[LM.chin]) - 6 };
+    const at = { head: y0 + 8, eyes: Y(lms[EYE.R.top]), ears: Y(lms[LM.nose]), mask: Y(lms[LM.lipT]), tongue: Y(lms[LM.lipB]) + 10, hair: Y(lms[LM.chin]) - 6 };
     for (const key in at) {
       const w = S.wear[key];
       if (!w || !w.on) continue;
@@ -514,9 +541,10 @@ function onResults(res) {
   const dt = clamp(t - S.lastT, 1 / 240, 0.5);
   S.lastT = t;
   S.fps = S.fps ? lerp(S.fps, 1 / dt, 0.15) : 1 / dt;
-  if (video.videoWidth) { VW = video.videoWidth; VH = video.videoHeight; }
+  S.frame = res.image;
+  VW = video.videoWidth || VW; VH = video.videoHeight || VH;
 
-  const lms = res.multiFaceLandmarks && res.multiFaceLandmarks[0];
+  const lms = res.lms;
   if (!lms) {
     if (S.hasFace) logEvent("FACE LOST");
     S.hasFace = false; S.prevNose = null; S.info = null;
@@ -529,6 +557,7 @@ function onResults(res) {
   S.hasFace = true;
   const info = (S.info = analyze(lms, t, dt));
   S.lms = lms;
+  detailScan(lms, info, t);
   draw(res.image, lms, info);
   updateHud(info);
   scanWear(lms, t);
@@ -585,6 +614,525 @@ async function scanWear(lms, t) {
   } catch (err) { S.wearBusy = false; }
 }
 
+/* ============================== DETAIL SCAN ==============================
+   A few times a second the face is re-read at pixel level for the things
+   landmarks cannot see: skin spots, teeth / tongue / tooth gems, the real
+   drawn shape of each eyebrow (angles, thickness, shaved slits), moustache /
+   beard coverage and head-hair extent. Sizes are in millimetres, using the
+   iris (≈ 11.7 mm across in every adult) as the ruler. Anything reported has
+   to persist over several scans, so one-frame glints and noise are dropped. */
+const IRIS_MM = 11.7;
+const NOSTRILS = [[20, 60, 75, 79, 166, 238], [250, 290, 305, 309, 392, 458]];
+const BROW = {                                    // upper / lower edge, inner end -> tail
+  R: { up: [107, 66, 105, 63, 70], lo: [55, 65, 52, 53, 46] },
+  L: { up: [336, 296, 334, 293, 300], lo: [285, 295, 282, 283, 276] },
+};
+
+const D = {
+  mm: 0,                     // millimetres per camera pixel
+  lastT: 0, lastHairT: 0, lastSaveT: 0,
+  spots: [], spotSeq: 0,     // tracked skin spots
+  gems: [], teeth: 0, tongue: 0,
+  brows: { R: null, L: null },
+  mous: null, beard: null, hair: null, hairStatus: "",
+};
+const scanCanvas = document.createElement("canvas");
+const sctx = scanCanvas.getContext("2d", { willReadFrequently: true });
+const maskCanvas = document.createElement("canvas");
+const mctx = maskCanvas.getContext("2d", { willReadFrequently: true });
+
+const median = a => { if (!a.length) return 0; const s = Array.from(a).sort((x, y) => x - y); return s[s.length >> 1]; };
+const quantile = (a, q) => { const s = Array.from(a).sort((x, y) => x - y); return s[Math.min(s.length - 1, Math.floor(q * s.length))] || 0; };
+const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
+const store = {
+  get(k, fallback) { try { return JSON.parse(localStorage.getItem(k)) || fallback; } catch (e) { return fallback; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* private mode: keep running */ } },
+};
+
+/* pixels of the region around some landmarks, optionally downscaled to maxW */
+function grab(lms, ids, pad, maxW) {
+  const b = bbox(lms, ids);
+  const x0 = clamp(Math.floor(b.x0 * VW - pad), 0, VW - 2), y0 = clamp(Math.floor(b.y0 * VH - pad), 0, VH - 2);
+  const x1 = clamp(Math.ceil(b.x1 * VW + pad), x0 + 2, VW), y1 = clamp(Math.ceil(b.y1 * VH + pad), y0 + 2, VH);
+  const k = Math.min(1, maxW / (x1 - x0));
+  const w = Math.max(2, Math.round((x1 - x0) * k)), h = Math.max(2, Math.round((y1 - y0) * k));
+  scanCanvas.width = w; scanCanvas.height = h;
+  sctx.drawImage(S.frame, x0, y0, x1 - x0, y1 - y0, 0, 0, w, h);
+  const px = sctx.getImageData(0, 0, w, h).data;
+  const n = w * h, L = new Float32Array(n), R = new Float32Array(n);
+  for (let i = 0, j = 0; i < n; i++, j += 4) { L[i] = 0.299 * px[j] + 0.587 * px[j + 1] + 0.114 * px[j + 2]; R[i] = px[j] - px[j + 1]; }
+  return {
+    px, L, R, w, h, k, mm: D.mm / k,                               // mm per pixel of this crop
+    X: i => (lms[i].x * VW - x0) * k, Y: i => (lms[i].y * VH - y0) * k,
+    toVideo: (x, y) => [x / k + x0, y / k + y0],
+  };
+}
+function ring(c, g, ids, shrink = 1) {
+  let cx = 0, cy = 0;
+  for (const i of ids) { cx += g.X(i); cy += g.Y(i); }
+  cx /= ids.length; cy /= ids.length;
+  c.beginPath();
+  ids.forEach((i, n) => { const x = cx + (g.X(i) - cx) * shrink, y = cy + (g.Y(i) - cy) * shrink; n ? c.lineTo(x, y) : c.moveTo(x, y); });
+  c.closePath();
+}
+function maskOf(g, paint) {
+  maskCanvas.width = g.w; maskCanvas.height = g.h;
+  mctx.fillStyle = "#000"; mctx.fillRect(0, 0, g.w, g.h);
+  paint(mctx);
+  const d = mctx.getImageData(0, 0, g.w, g.h).data, m = new Uint8Array(g.w * g.h);
+  for (let i = 0; i < m.length; i++) m[i] = d[i * 4] > 127 ? 1 : 0;
+  return m;
+}
+function patchL(g, lm, r) {
+  const cx = Math.round(g.X(lm)), cy = Math.round(g.Y(lm)), v = [];
+  for (let y = cy - r; y <= cy + r; y++) for (let x = cx - r; x <= cx + r; x++) if (x >= 0 && y >= 0 && x < g.w && y < g.h) v.push(g.L[y * g.w + x]);
+  return median(v);
+}
+/* summed-area table of src (optionally × mask) for O(1) box means */
+function integral(src, mask, w, h) {
+  const I = new Float64Array((w + 1) * (h + 1));
+  for (let y = 0; y < h; y++) {
+    let row = 0;
+    for (let x = 0; x < w; x++) { const i = y * w + x; row += mask ? src[i] * mask[i] : src[i]; I[(y + 1) * (w + 1) + x + 1] = I[y * (w + 1) + x + 1] + row; }
+  }
+  return I;
+}
+const boxSum = (I, w, x0, y0, x1, y1) => I[y1 * (w + 1) + x1] - I[y0 * (w + 1) + x1] - I[y1 * (w + 1) + x0] + I[y0 * (w + 1) + x0];
+
+/* connected blobs of `on(i)` pixels: [{x, y, area, bw, bh, peak}] */
+function blobs(w, h, on, value) {
+  const seen = new Uint8Array(w * h), out = [], stack = [];
+  for (let s = 0; s < w * h; s++) {
+    if (seen[s] || !on(s)) continue;
+    let area = 0, sx = 0, sy = 0, x0 = w, x1 = 0, y0 = h, y1 = 0, peak = -1e9;
+    stack.push(s); seen[s] = 1;
+    while (stack.length) {
+      const i = stack.pop(), x = i % w, y = (i - x) / w;
+      area++; sx += x; sy += y; x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y);
+      if (value) peak = Math.max(peak, value[i]);
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        const nx = x + dx, ny = y + dy;
+        if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+        const j = ny * w + nx;
+        if (!seen[j] && on(j)) { seen[j] = 1; stack.push(j); }
+      }
+    }
+    out.push({ x: sx / area, y: sy / area, area, bw: x1 - x0 + 1, bh: y1 - y0 + 1, peak });
+  }
+  return out;
+}
+
+/* ------------------------------ skin spots ------------------------------ */
+/* A spot is a small round patch that is darker and/or redder than the skin
+   around it (difference of a ~1 mm and a ~6 mm local mean, skin pixels only). */
+function findSpots(g, mask) {
+  const { w, h } = g, ppm = 1 / g.mm;
+  const r1 = Math.max(1, Math.round(0.5 * ppm)), r2 = Math.max(4, Math.round(3.2 * ppm));
+  const IL = integral(g.L, mask, w, h), IR = integral(g.R, mask, w, h), IM = integral(mask, null, w, h);
+  const score = new Float32Array(w * h), red = new Float32Array(w * h), small = (2 * r1 + 1) ** 2, big = (2 * r2 + 1) ** 2;
+  let sum = 0, sq = 0, n = 0;
+  for (let y = r2; y < h - r2; y++) for (let x = r2; x < w - r2; x++) {
+    const i = y * w + x;
+    if (!mask[i]) continue;
+    const cb = boxSum(IM, w, x - r2, y - r2, x + r2 + 1, y + r2 + 1);
+    if (cb < 0.6 * big || boxSum(IM, w, x - r1, y - r1, x + r1 + 1, y + r1 + 1) < small) continue;
+    const Ls = boxSum(IL, w, x - r1, y - r1, x + r1 + 1, y + r1 + 1) / small, Lb = boxSum(IL, w, x - r2, y - r2, x + r2 + 1, y + r2 + 1) / cb;
+    const Rs = boxSum(IR, w, x - r1, y - r1, x + r1 + 1, y + r1 + 1) / small, Rb = boxSum(IR, w, x - r2, y - r2, x + r2 + 1, y + r2 + 1) / cb;
+    const s = (Lb - Ls) * 0.7 + (Rs - Rb) * 1.3;
+    score[i] = s; red[i] = Rs - Rb; sum += s; sq += s * s; n++;
+  }
+  if (n < 400) return [];
+  const mean = sum / n, sd = Math.sqrt(Math.max(0, sq / n - mean * mean));
+  const thr = Math.max(mean + 4.5 * sd, 11);
+  return blobs(w, h, i => score[i] > thr * 0.7, score)
+    .filter(b => b.peak > thr && red[Math.round(b.y) * w + Math.round(b.x)] > 2)     // inflamed = redder, not just a shadow
+    .map(b => ({ ...b, mm: 2 * Math.sqrt(b.area / Math.PI) * g.mm }))
+    .filter(b => b.mm >= 0.8 && b.mm <= 8 && Math.max(b.bw, b.bh) / Math.min(b.bw, b.bh) <= 2.6)
+    .sort((a, b) => b.peak - a.peak).slice(0, 30);
+}
+function spotRegion(lms, x, y) {                 // x, y in camera pixels
+  const Y = i => lms[i].y * VH, X = i => lms[i].x * VW;
+  if (y < Math.min(Y(105), Y(334))) return "FOREHEAD";
+  const nb = bbox(lms, NOSE);
+  if (x > nb.x0 * VW && x < nb.x1 * VW && y > nb.y0 * VH && y < nb.y1 * VH) return "NOSE";
+  if (y > Y(17)) return "CHIN";
+  if (y > Y(2) && y < Y(0) && x > X(61) && x < X(291)) return "UPPER LIP";
+  return x < X(1) ? "R CHEEK" : "L CHEEK";
+}
+/* A candidate becomes a logged spot only after it keeps reappearing at the same
+   place on the face (stored as nearest landmark + offset, so it moves with you). */
+function trackSpots(lms, info, g, cands) {
+  const fw = info.faceW, tol = 2.5 / D.mm, used = new Set();
+  for (const c of cands) [c.vx, c.vy] = g.toVideo(c.x, c.y);
+  for (const s of D.spots) {
+    const px = lms[s.lm].x * VW + s.ox * fw, py = lms[s.lm].y * VH + s.oy * fw;
+    let best = -1, bd = tol;
+    cands.forEach((c, j) => { const d = Math.hypot(c.vx - px, c.vy - py); if (!used.has(j) && d < bd) { bd = d; best = j; } });
+    if (best >= 0) {
+      const c = cands[best]; used.add(best);
+      s.score = Math.min(12, s.score + 1); s.mm = lerp(s.mm, c.mm, 0.2);
+      s.ox = lerp(s.ox, (c.vx - lms[s.lm].x * VW) / fw, 0.3); s.oy = lerp(s.oy, (c.vy - lms[s.lm].y * VH) / fw, 0.3);
+    } else s.score--;
+    if (!s.ok && s.score >= 6) confirmSpot(lms, s, px, py);
+  }
+  D.spots = D.spots.filter(s => s.score > 0);
+  cands.forEach((c, j) => {
+    if (used.has(j) || D.spots.length > 60) return;
+    let lm = 0, bd = 1e9;
+    for (let i = 0; i < 468; i++) { const d = Math.hypot(lms[i].x * VW - c.vx, lms[i].y * VH - c.vy); if (d < bd) { bd = d; lm = i; } }
+    D.spots.push({ lm, ox: (c.vx - lms[lm].x * VW) / fw, oy: (c.vy - lms[lm].y * VH) / fw, mm: c.mm, score: 1, ok: false });
+  });
+}
+function confirmSpot(lms, s, px, py) {
+  s.ok = true; s.id = ++D.spotSeq; s.region = spotRegion(lms, px, py);
+  // remembered between sessions, so a spot that was not there before is flagged NEW
+  const known = store.get("facetrack.spots", []), fw = dist(lms[LM.cheekR], lms[LM.cheekL]);
+  const hit = known.find(k => Math.hypot(lms[k.lm].x * VW + k.ox * fw - px, lms[k.lm].y * VH + k.oy * fw - py) * D.mm < 4);
+  s.first = hit ? hit.first : today();
+  s.isNew = !hit && known.some(k => k.first < today());
+  if (!hit) { known.push({ lm: s.lm, ox: s.ox, oy: s.oy, first: s.first }); store.set("facetrack.spots", known.slice(-200)); }
+  logEvent(`${s.isNew ? "NEW SPOT" : "SPOT"} #${s.id} · ${s.region} · ${s.mm.toFixed(1)} mm${hit && hit.first < today() ? " · since " + hit.first : ""}`);
+}
+
+/* fraction of a zone covered by hair (pixels clearly darker than bare skin) */
+function zoneCoverage(g, ids, skinL) {
+  const m = maskOf(g, c => { c.fillStyle = "#fff"; ring(c, g, ids); c.fill(); });
+  let n = 0, d = 0;
+  for (let i = 0; i < m.length; i++) if (m[i]) { n++; if (g.L[i] < skinL * 0.72) d++; }
+  return n ? d / n : 0;
+}
+function scanSkin(lms, info) {
+  const g = grab(lms, null, info.faceW * 0.04, 420);
+  const fw = info.faceW * g.k;
+  const skinL = Math.max(patchL(g, 205, 3), patchL(g, 425, 3), patchL(g, 151, 3));
+
+  // moustache: coverage of the upper lip + how tall the dark band is, nose base -> lip
+  const cov = zoneCoverage(g, RING.mous, skinL);
+  const vx = g.X(0) - g.X(2), vy = g.Y(0) - g.Y(2), vl = Math.hypot(vx, vy) || 1, bands = [];
+  for (const off of [-0.1, -0.05, 0.05, 0.1]) {
+    let dark = 0;
+    for (let s = 0; s < 24; s++) {
+      const x = Math.round(g.X(2) + vx * (s / 23) + (-vy / vl) * off * fw), y = Math.round(g.Y(2) + vy * (s / 23) + (vx / vl) * off * fw);
+      if (x >= 0 && y >= 0 && x < g.w && y < g.h && g.L[y * g.w + x] < skinL * 0.72) dark++;
+    }
+    bands.push((dark / 24) * vl * g.mm);
+  }
+  const mous = { cov, mm: median(bands) }, beard = { cov: zoneCoverage(g, RING.beard, skinL) };
+  D.mous = D.mous ? { cov: lerp(D.mous.cov, mous.cov, 0.25), mm: lerp(D.mous.mm, mous.mm, 0.25) } : mous;
+  D.beard = D.beard ? { cov: lerp(D.beard.cov, beard.cov, 0.25) } : beard;
+
+  // skin = face oval minus eyes, brows, lips, nostrils (and hair zones / glasses when present)
+  const mask = maskOf(g, c => {
+    c.fillStyle = "#fff"; ring(c, g, RING.oval, 0.9); c.fill();
+    c.fillStyle = c.strokeStyle = "#000"; c.lineJoin = "round";
+    for (const [ids, widen] of [[RING.eyeR, 0.09], [RING.eyeL, 0.09], [RING.browR, 0.07], [RING.browL, 0.07], [RING.lips, 0.05]]) {
+      c.lineWidth = widen * fw * 2; ring(c, g, ids); c.fill(); c.stroke();
+    }
+    for (const ids of NOSTRILS) {
+      let x = 0, y = 0; for (const i of ids) { x += g.X(i); y += g.Y(i); }
+      c.beginPath(); c.arc(x / ids.length, y / ids.length, 0.05 * fw, 0, Math.PI * 2); c.fill();
+    }
+    c.lineWidth = 0.03 * fw * 2;
+    if (D.mous.cov > 0.4) { ring(c, g, RING.mous); c.fill(); c.stroke(); }
+    if (D.beard.cov > 0.4) { ring(c, g, RING.beard); c.fill(); c.stroke(); }
+    if (S.wear.eyes && S.wear.eyes.on) {                           // frames would read as dark marks
+      const y0 = Math.min(g.Y(105), g.Y(334)) - 0.04 * fw, y1 = Math.max(g.Y(EYE.R.bottom), g.Y(EYE.L.bottom)) + 0.14 * fw;
+      c.fillRect(0, y0, g.w, y1 - y0);
+    }
+  });
+  trackSpots(lms, info, g, findSpots(g, mask));
+}
+
+/* ------------------------- teeth, tongue, tooth gems --------------------- */
+function scanMouth(lms, info) {
+  const gapMm = dist(lms[13], lms[14]) * D.mm;
+  if (gapMm < 3) { D.teeth = lerp(D.teeth, 0, 0.5); D.tongue = lerp(D.tongue, 0, 0.5); return; }
+  const g = grab(lms, RING.inner, 4, 640);
+  const m = maskOf(g, c => { c.fillStyle = "#fff"; ring(c, g, RING.inner); c.fill(); });
+  const n = g.w * g.h, cls = new Uint8Array(n), Ls = [];
+  for (let i = 0; i < n; i++) if (m[i]) Ls.push(g.L[i]);
+  if (Ls.length < 40) return;
+  const L90 = quantile(Ls, 0.9);
+  let teeth = 0, tongue = 0;
+  const teethL = [];
+  for (let i = 0, j = 0; i < n; i++, j += 4) {
+    if (!m[i]) continue;
+    const r = g.px[j], gr = g.px[j + 1], b = g.px[j + 2], mx = Math.max(r, gr, b), sat = mx ? (mx - Math.min(r, gr, b)) / mx : 0;
+    if (sat < 0.3 && g.L[i] > Math.max(90, 0.62 * L90)) { cls[i] = 1; teeth++; teethL.push(g.L[i]); }       // bright, colourless
+    else if (r - gr > 28 && sat >= 0.28 && g.L[i] > 55) { cls[i] = 2; tongue++; }                           // pink / red, lit
+  }
+  D.teeth = lerp(D.teeth, teeth / Ls.length, 0.4);
+  // parted lips are pink too, so only call it a tongue once the mouth is properly open
+  D.tongue = lerp(D.tongue, gapMm > 8 && S.mouthLabel !== "CLOSED" ? tongue / Ls.length : 0, 0.4);
+
+  // tooth gem = a tiny, much-brighter-than-tooth sparkle that sits on teeth and stays put on the skull
+  const cands = [];
+  if (teeth > 60) {
+    const Lt = median(teethL), thr = Math.max(Lt + 35, 215);
+    for (const b of blobs(g.w, g.h, i => m[i] && g.L[i] >= thr)) {
+      const mm = 2 * Math.sqrt(b.area / Math.PI) * g.mm;
+      if (mm < 0.3 || mm > 3.5) continue;
+      let around = 0, onTeeth = 0;                                 // must be ringed by tooth, not lip or tongue
+      const r = Math.ceil(Math.max(b.bw, b.bh) / 2) + 2;
+      for (let a = 0; a < 16; a++) {
+        const x = Math.round(b.x + Math.cos(a * Math.PI / 8) * r), y = Math.round(b.y + Math.sin(a * Math.PI / 8) * r);
+        if (x < 0 || y < 0 || x >= g.w || y >= g.h) continue;
+        around++; if (cls[y * g.w + x] === 1) onTeeth++;
+      }
+      if (around && onTeeth / around >= 0.6) cands.push({ ...b, mm });
+    }
+  }
+  // gems are tracked in a skull-fixed frame (nose base + eye line), since lips move over them
+  const ox = lms[2].x * VW, oy = lms[2].y * VH;
+  let ex = (lms[263].x - lms[33].x) * VW, ey = (lms[263].y - lms[33].y) * VH;
+  const el = Math.hypot(ex, ey) || 1; ex /= el; ey /= el;
+  const used = new Set();
+  for (const c of cands) { const [vx, vy] = g.toVideo(c.x, c.y); c.u = ((vx - ox) * ex + (vy - oy) * ey) * D.mm; c.v = (-(vx - ox) * ey + (vy - oy) * ex) * D.mm; }
+  for (const t of D.gems) {
+    let best = -1, bd = 1.6;
+    cands.forEach((c, j) => { const d = Math.hypot(c.u - t.u, c.v - t.v); if (!used.has(j) && d < bd) { bd = d; best = j; } });
+    if (best >= 0) { const c = cands[best]; used.add(best); t.score = Math.min(10, t.score + 1); t.u = lerp(t.u, c.u, 0.3); t.v = lerp(t.v, c.v, 0.3); t.mm = lerp(t.mm, c.mm, 0.3); }
+    else if (D.teeth > 0.2) t.score -= 0.5;                         // only lose points while teeth are actually showing
+    if (!t.ok && t.score >= 5) { t.ok = true; logEvent(`TOOTH GEM DETECTED · ${t.mm.toFixed(1)} mm`); }
+  }
+  D.gems = D.gems.filter(t => t.score > 0);
+  cands.forEach((c, j) => { if (!used.has(j) && D.gems.length < 12) D.gems.push({ u: c.u, v: c.v, mm: c.mm, score: 1, ok: false }); });
+}
+
+/* ------------------------------- eyebrows -------------------------------- */
+/* Follows the darkest line of each brow in the pixels (not the model's guess),
+   so shaved shapes, thinning and slits show up. Angles are relative to the
+   eye line, so tilting your head does not change them. */
+function scanBrow(lms, info, side, g) {
+  const B = BROW[side];
+  const c = B.up.map((u, i) => [(g.X(u) + g.X(B.lo[i])) / 2, (g.Y(u) + g.Y(B.lo[i])) / 2]);
+  let ex = g.X(263) - g.X(33), ey = g.Y(263) - g.Y(33);
+  const el = Math.hypot(ex, ey) || 1; ex /= el; ey /= el;
+  const nx = ey, ny = -ex;                                         // "up" on the face
+  const dir = side === "R" ? -1 : 1;                               // inner -> tail along the eye line
+  const H = Math.max(4, Math.round(0.075 * info.faceW * g.k)), N = 44;
+  const seg = c.slice(1).map((p, i) => Math.hypot(p[0] - c[i][0], p[1] - c[i][1])), total = seg.reduce((a, b) => a + b, 0);
+  const at = (x, y) => { x = Math.round(x); y = Math.round(y); return x < 0 || y < 0 || x >= g.w || y >= g.h ? -1 : g.L[y * g.w + x]; };
+  const rows = [];
+  for (let s = 0; s < N; s++) {                                    // a cross-section of the brow every ~1 mm
+    let d = (s / (N - 1)) * total, i = 0;
+    while (i < seg.length - 1 && d > seg[i]) d -= seg[i++];
+    const f = seg[i] ? d / seg[i] : 0, px = lerp(c[i][0], c[i + 1][0], f), py = lerp(c[i][1], c[i + 1][1], f);
+    const prof = [];
+    for (let t = -H; t <= H; t++) prof.push(at(px + nx * t, py + ny * t));
+    let minL = 1e9, kMin = H;
+    for (let k = Math.round(H * 0.35); k <= Math.round(H * 1.65); k++) {       // stay clear of the lashes below
+      if (prof[k - 1] < 0 || prof[k + 1] < 0) continue;
+      const v = (prof[k - 1] + prof[k] + prof[k + 1]) / 3;
+      if (v < minL) { minL = v; kMin = k; }
+    }
+    rows.push({ px, py, prof, minL, kMin, skin: median(prof.slice(Math.round(H * 1.7)).filter(v => v >= 0)) });
+  }
+  const skinL = median(rows.map(r => r.skin)) || 1;
+  const th = Math.max(0.14, 0.5 * quantile(rows.map(r => 1 - r.minL / skinL), 0.75)), cut = skinL * (1 - th);
+  for (const r of rows) {                                          // the run of hair pixels through the darkest point
+    r.thick = 0;
+    if (r.minL >= cut) continue;
+    let a = r.kMin, b = r.kMin;
+    while (a > 0 && r.prof[a - 1] >= 0 && r.prof[a - 1] < cut) a--;
+    while (b < r.prof.length - 1 && r.prof[b + 1] >= 0 && r.prof[b + 1] < cut) b++;
+    r.thick = b - a + 1; r.tc = (a + b) / 2 - H;
+  }
+  const present = rows.map(r => r.thick > 0);
+  const first = present.indexOf(true), last = present.lastIndexOf(true);
+  if (first < 0 || present.filter(Boolean).length < 8) return { faint: true };
+
+  const step = (total / (N - 1)) * g.mm, slits = [];
+  for (let s = first + 1, run = 0; s <= last; s++) {               // a slit = a short bare gap with hair on both sides
+    if (!present[s]) { run++; continue; }
+    if (run && run * step >= 0.6 && run * step <= 7) slits.push(s - run / 2 - 0.5);
+    run = 0;
+  }
+  const P = [];                                                    // centre line, in "along the brow / up" millimetres
+  for (let s = first; s <= last; s++) {
+    if (!present[s]) continue;
+    let tc = 0, n = 0;
+    for (let j = s - 2; j <= s + 2; j++) if (rows[j] && present[j]) { tc += rows[j].tc; n++; }
+    const r = rows[s], x = r.px + nx * (tc / n), y = r.py + ny * (tc / n);
+    P.push({ x, y, a: ((x - rows[first].px) * ex + (y - rows[first].py) * ey) * dir * g.mm, u: ((x - rows[first].px) * nx + (y - rows[first].py) * ny) * g.mm });
+  }
+  const avg = pts => ({ a: pts.reduce((t, p) => t + p.a, 0) / pts.length, u: pts.reduce((t, p) => t + p.u, 0) / pts.length });
+  const p0 = avg(P.slice(0, 3)), p1 = avg(P.slice(-3)), pk = P.reduce((m, p) => (p.u > m.u ? p : m), P[0]);
+  const ang = (du, da) => Math.atan2(du, Math.max(1, da)) * DEG;
+  const vid = (x, y) => { const [vx, vy] = g.toVideo(x, y); return { x: vx / VW, y: vy / VH }; };
+  return {
+    tilt: ang(p1.u - p0.u, p1.a - p0.a),                           // + = tail sits higher than the inner end
+    rise: ang(pk.u - p0.u, pk.a - p0.a), fall: ang(pk.u - p1.u, p1.a - pk.a),
+    len: (last - first) * step, thick: median(rows.filter(r => r.thick).map(r => r.thick)) * g.mm, slits: slits.length,
+    line: P.map(p => vid(p.x, p.y)),
+    slitAt: slits.map(s => { const r = rows[Math.round(s)]; return vid(r.px, r.py); }),
+  };
+}
+function scanBrows(lms, info) {
+  const g = grab(lms, [...RING.browR, ...RING.browL], info.faceW * 0.12, 900);
+  for (const side of ["R", "L"]) {
+    const b = scanBrow(lms, info, side, g), prev = D.brows[side];
+    if (b.faint) { if (prev) prev.stale = (prev.stale || 0) + 1; if (prev && prev.stale > 10) D.brows[side] = null; continue; }
+    b.hist = [...((prev && prev.hist) || []), b.slits].slice(-9);
+    const votes = {}; for (const v of b.hist) votes[v] = (votes[v] || 0) + 1;
+    b.slitsStable = +Object.keys(votes).sort((x, y) => votes[y] - votes[x])[0];
+    if (prev) {
+      for (const k of ["tilt", "rise", "fall", "len", "thick"]) b[k] = lerp(prev[k], b[k], 0.2);
+      if (b.hist.length >= 7 && b.slitsStable !== prev.slitsStable && !(S.wear.eyes && S.wear.eyes.on)) logEvent(`${side} BROW · ${b.slitsStable} SLIT${b.slitsStable === 1 ? "" : "S"}`);
+    }
+    D.brows[side] = b;
+  }
+}
+
+/* -------------------------------- head hair ------------------------------ */
+let hairSeg = null;
+async function startHair() {
+  D.hairStatus = "loading…";
+  const opts = delegate => ({
+    baseOptions: { modelAssetPath: MODELS + "image_segmenter/selfie_multiclass_256x256/float32/latest/selfie_multiclass_256x256.tflite", delegate },
+    runningMode: "IMAGE", outputCategoryMask: true, outputConfidenceMasks: false,
+  });
+  try {
+    try { hairSeg = await vision.ImageSegmenter.createFromOptions(visionFiles, opts("GPU")); }
+    catch (e) { hairSeg = await vision.ImageSegmenter.createFromOptions(visionFiles, opts("CPU")); }
+    D.hairStatus = "";
+  } catch (err) { D.hairStatus = "unavailable"; console.warn("hair segmenter:", err); }
+}
+/* hair pixels (class 1 of the selfie segmenter) measured along the face's own up axis */
+function scanHair(lms, info) {
+  const res = hairSeg.segment(S.frame), mask = res.categoryMask;
+  const data = mask.getAsUint8Array(), w = mask.width, h = mask.height;
+  const tx = lms[LM.top].x * VW, ty = lms[LM.top].y * VH, cx = lms[LM.chin].x * VW, cy = lms[LM.chin].y * VH;
+  const fl = Math.hypot(tx - cx, ty - cy) || 1, ux = (tx - cx) / fl, uy = (ty - cy) / fl;
+  let hi = 0, lo = 0, count = 0, cut = false;
+  const sx = VW / w, sy = VH / h;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    if (data[y * w + x] !== 1) continue;
+    const dx = (x + 0.5) * sx - tx, dy = (y + 0.5) * sy - ty;
+    if (Math.abs(dx * uy - dy * ux) > 1.4 * info.faceW) continue;   // someone else's hair / background
+    const along = dx * ux + dy * uy;
+    hi = Math.max(hi, along); lo = Math.min(lo, along); count++;
+    if (y === 0 || y === h - 1) cut = true;
+  }
+  res.close();
+  if (count < 30) { D.hair = null; return; }
+  const m = { top: hi * D.mm, span: (hi - lo) * D.mm, below: (-lo - fl) * D.mm, area: count * sx * sy * D.mm * D.mm / 100, cut };
+  D.hair = D.hair ? { top: lerp(D.hair.top, m.top, 0.3), span: lerp(D.hair.span, m.span, 0.3), below: lerp(D.hair.below, m.below, 0.3), area: lerp(D.hair.area, m.area, 0.3), cut } : m;
+}
+
+/* ------------------------------- growth log ------------------------------ */
+/* One entry per day (the latest steady reading), kept in this browser, so
+   slow changes — moustache, hair, brow thickness, spot count — can be compared. */
+function measures() {
+  const b = [D.brows.R, D.brows.L].filter(Boolean);
+  return {
+    "MOUSTACHE mm": D.mous && D.mous.cov > 0.25 ? D.mous.mm : null,
+    "MOUSTACHE %": D.mous ? D.mous.cov * 100 : null,
+    "BEARD %": D.beard ? D.beard.cov * 100 : null,
+    "HAIR TOP mm": D.hair ? D.hair.top : null,
+    "HAIR SPAN mm": D.hair ? D.hair.span : null,
+    "BROW THICK mm": b.length ? b.reduce((a, x) => a + x.thick, 0) / b.length : null,
+    "SKIN SPOTS": D.spots.filter(s => s.ok).length,
+  };
+}
+function saveGrowth() {
+  const log = store.get("facetrack.growth", {}), m = measures(), row = {};
+  for (const k in m) if (m[k] !== null) row[k] = Math.round(m[k] * 10) / 10;
+  log[today()] = row;
+  store.set("facetrack.growth", log);
+}
+function exportGrowth() {
+  const log = store.get("facetrack.growth", {}), keys = Object.keys(measures());
+  const csv = ["date," + keys.join(","), ...Object.keys(log).sort().map(d => d + "," + keys.map(k => (log[d][k] === undefined ? "" : log[d][k])).join(","))].join("\n");
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" })); a.download = "face-track-log.csv"; a.click();
+}
+
+/* ------------------------------ orchestration ---------------------------- */
+function detailScan(lms, info, t) {
+  if (!info.shutR && !info.shutL && info.eR.r + info.eL.r > 2) {
+    const mm = IRIS_MM / (info.eR.r + info.eL.r);                  // iris diameter = mean of both = rR + rL
+    D.mm = D.mm ? lerp(D.mm, mm, 0.1) : mm;
+  }
+  if (!D.mm || t - D.lastT < 0.3) return;
+  D.lastT = t;
+  const frontal = Math.abs(info.pose.yaw) < 20 && Math.abs(info.pose.pitch) < 20, still = S.headSpeed < 0.3;
+  try {
+    scanMouth(lms, info);
+    if (frontal) scanBrows(lms, info);
+    if (frontal && still) scanSkin(lms, info);
+    if (hairSeg && frontal && t - D.lastHairT > 1.5) { D.lastHairT = t; scanHair(lms, info); }
+    if (frontal && still && t - D.lastSaveT > 5) { D.lastSaveT = t; saveGrowth(); }
+  } catch (err) { console.warn("detail scan:", err); }
+  renderDetail();
+}
+
+function drawDetail(lms, info) {
+  const fw = info.faceW;
+  ctx.font = "600 9px ui-monospace, Menlo, Consolas, monospace"; ctx.textBaseline = "middle";
+  for (const s of D.spots) {                                       // logged skin spots: numbered red rings
+    if (!s.ok) continue;
+    const p = { x: (lms[s.lm].x * VW + s.ox * fw) / VW, y: (lms[s.lm].y * VH + s.oy * fw) / VH }, r = Math.max(4, (s.mm / D.mm) * fit.s * 0.9);
+    ctx.strokeStyle = s.isNew ? "#ffd23f" : "#ff3b30"; ctx.lineWidth = 1.4;
+    ctx.beginPath(); ctx.arc(X(p), Y(p), r, 0, Math.PI * 2); ctx.stroke();
+    if (S.showLabels) { ctx.fillStyle = ctx.strokeStyle; ctx.fillText("#" + s.id, X(p) + r + 2, Y(p)); }
+  }
+  for (const side of ["R", "L"]) {                                 // traced brow line + slit ticks
+    const b = D.brows[side];
+    if (!b || !b.line.length) continue;
+    ctx.strokeStyle = "#ffd23f"; ctx.lineWidth = 1.5; ctx.beginPath();
+    b.line.forEach((p, i) => (i ? ctx.lineTo(X(p), Y(p)) : ctx.moveTo(X(p), Y(p))));
+    ctx.stroke();
+    ctx.strokeStyle = "#ff3b30"; ctx.lineWidth = 2;
+    for (const p of b.slitAt) { ctx.beginPath(); ctx.moveTo(X(p), Y(p) - 7); ctx.lineTo(X(p), Y(p) + 7); ctx.stroke(); }
+  }
+  if (D.gems.some(t => t.ok) && D.teeth > 0.1) {                   // tooth gems: diamonds, back in camera space
+    let ex = (lms[263].x - lms[33].x) * VW, ey = (lms[263].y - lms[33].y) * VH;
+    const el = Math.hypot(ex, ey) || 1; ex /= el; ey /= el;
+    for (const t of D.gems) {
+      if (!t.ok) continue;
+      const p = { x: (lms[2].x * VW + (t.u * ex - t.v * ey) / D.mm) / VW, y: (lms[2].y * VH + (t.u * ey + t.v * ex) / D.mm) / VH };
+      const x = X(p), y = Y(p);
+      ctx.strokeStyle = "#00e5ff"; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(x, y - 7); ctx.lineTo(x + 6, y); ctx.lineTo(x, y + 7); ctx.lineTo(x - 6, y); ctx.closePath(); ctx.stroke();
+    }
+  }
+}
+
+function renderDetail() {
+  const f = (v, d = 0) => (v === null || v === undefined || isNaN(v) ? "—" : v.toFixed(d));
+  const row = (k, v, cls = "") => `<div class="row"><span class="k">${k}</span><span class="v ${cls}">${v}</span></div>`;
+  const spots = D.spots.filter(s => s.ok), gems = D.gems.filter(t => t.ok).length;
+  const mouth = [];
+  if (D.teeth > 0.2) mouth.push("TEETH");
+  if (D.tongue > 0.45 || (S.wear.tongue && S.wear.tongue.on)) mouth.push(S.wear.tongue && S.wear.tongue.on ? "TONGUE OUT" : "TONGUE");
+  if (gems) mouth.push(`GEM ×${gems}`);
+  let h = row("SCALE", D.mm ? `1 px = ${f(D.mm, 2)} mm` : "—");
+  h += row("SKIN SPOTS", spots.length ? spots.length + (spots.some(s => s.isNew) ? ` (${spots.filter(s => s.isNew).length} new)` : "") : "none", spots.length ? "hot" : "off");
+  for (const s of spots.slice(0, 6)) h += row(`&nbsp;#${s.id} ${s.region}`, `${f(s.mm, 1)} mm${s.isNew ? " · NEW" : ""}`);
+  h += row("MOUTH", mouth.length ? mouth.join(" · ") : S.mouthLabel === "CLOSED" ? "closed" : "open", mouth.length ? "hot" : "off");
+  const glasses = S.wear.eyes && S.wear.eyes.on;                    // frames cross the brows and fake gaps
+  for (const side of ["R", "L"]) {
+    const b = D.brows[side];
+    h += row(`${side} BROW`, b ? `tilt ${f(b.tilt)}° · arch ${f(b.rise)}° · tail ${f(-b.fall)}°` : "—");
+    if (b) h += row("", `${f(b.len)} mm long · ${f(b.thick, 1)} mm thick · ${glasses ? "glasses in the way" : b.slitsStable + " slit" + (b.slitsStable === 1 ? "" : "s")}`, b.slitsStable && !glasses ? "hot" : "");
+  }
+  h += row("MOUSTACHE", D.mous ? (D.mous.cov > 0.25 ? `${f(D.mous.cov * 100)}% · ${f(D.mous.mm, 1)} mm band` : "none") : "—");
+  h += row("BEARD", D.beard ? (D.beard.cov > 0.25 ? `${f(D.beard.cov * 100)}% coverage` : "none") : "—");
+  h += row("HAIR", D.hair ? `${D.hair.cut ? "≥" : ""}${f(D.hair.top)} mm above forehead` : D.hairStatus || "—");
+  if (D.hair) h += row("", `${f(D.hair.span)} mm top to tips · ${D.hair.below > 0 ? f(D.hair.below) + " mm past chin" : "ends " + f(-D.hair.below) + " mm above chin"}`);
+  $("detailRows").innerHTML = h;
+
+  const log = store.get("facetrack.growth", {}), days = Object.keys(log).sort(), now = log[today()];
+  let gl = "";
+  if (now && days.length > 1) {
+    const base = log[days[0]];
+    for (const k in now) if (base[k] !== undefined) { const d = now[k] - base[k]; gl += row(k, `${now[k]} (${d >= 0 ? "+" : ""}${d.toFixed(1)})`, Math.abs(d) >= 1 ? "hot" : ""); }
+    gl = `<div class="off">since ${days[0]} · ${days.length} days logged</div>` + gl;
+  } else gl = `<div class="off">day 1 saved — come back tomorrow to see changes</div>`;
+  $("growth").innerHTML = gl;
+}
+
 /* ------------------------------- controls ------------------------------- */
 function calibrate() {
   S.base = null; S.baseAcc = null; F.gx.reset(); F.gy.reset();
@@ -595,33 +1143,85 @@ function toggle(key, btn) { S[key] = !S[key]; $(btn).classList.toggle("act", S[k
 $("bMesh").onclick = () => toggle("showMesh", "bMesh");
 $("bLabels").onclick = () => toggle("showLabels", "bLabels");
 $("bCal").onclick = calibrate;
+$("bExport").onclick = exportGrowth;
 window.addEventListener("keydown", e => {
   const k = e.key.toLowerCase();
   if (k === "c") calibrate();
   else if (k === "m") $("bMesh").click();
   else if (k === "l") $("bLabels").click();
-  else if (k === "h") $("hud").classList.toggle("hidden");
+  else if (k === "h") { $("hud").classList.toggle("hidden"); $("detail").classList.toggle("hidden"); }
 });
 
-/* ------------------------------ bootstrap ------------------------------- */
-async function start() {
-  if (typeof FaceMesh === "undefined" || typeof Camera === "undefined") throw new Error("MediaPipe failed to load (offline or blocked CDN).");
-  buildSets();
-  const faceMesh = new FaceMesh({ locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4.1633559619/${f}` });
-  faceMesh.setOptions({ maxNumFaces: 1, refineLandmarks: true, minDetectionConfidence: 0.6, minTrackingConfidence: 0.6 });   // refine = irises
-  faceMesh.onResults(onResults);
+/* -------------------------------- camera -------------------------------- */
+/* Any connected camera can be picked (e.g. an external 1080p webcam); the
+   highest resolution it offers is requested, and optical / digital zoom is
+   exposed when the camera supports it. */
+let stream = null, lastFrameT = -1;
+async function openCamera(deviceId) {
+  if (stream) stream.getTracks().forEach(t => t.stop());
   const mobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
-  const cam = new Camera(video, {
-    onFrame: async () => { await faceMesh.send({ image: video }); },
-    width: mobile ? 640 : 1280, height: mobile ? 480 : 720,
+  const base = { width: { ideal: mobile ? 640 : 1920 }, height: { ideal: mobile ? 480 : 1080 }, frameRate: { ideal: 30 } };   // detail needs pixels
+  if (deviceId) base.deviceId = { exact: deviceId }; else base.facingMode = "user";
+  try { stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { ...base, zoom: true } }); }             // zoom:true asks for zoom control
+  catch (e) { stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: base }); }
+  video.srcObject = stream;
+  await video.play();
+  const track = stream.getVideoTracks()[0], set = track.getSettings();
+  $("camRes").textContent = `· ${set.width}×${set.height}`;
+
+  const cams = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === "videoinput");
+  $("camSel").innerHTML = cams.map((c, i) => `<option value="${c.deviceId}">${c.label || "Camera " + (i + 1)}</option>`).join("");
+  $("camSel").value = set.deviceId || "";
+
+  const caps = track.getCapabilities ? track.getCapabilities() : {};
+  const zr = $("zoomRow"), z = $("zoom");
+  zr.classList.toggle("hidden", !(caps.zoom && caps.zoom.max > caps.zoom.min));
+  if (caps.zoom) {
+    z.min = caps.zoom.min; z.max = caps.zoom.max; z.step = caps.zoom.step || 1; z.value = set.zoom || caps.zoom.min;
+    const show = () => ($("zoomVal").textContent = `· ${(z.value / caps.zoom.min).toFixed(1)}×`);
+    z.oninput = () => { track.applyConstraints({ advanced: [{ zoom: +z.value }] }).catch(() => {}); show(); };
+    show();
+  }
+  for (const k in F) F[k].reset();                                 // new view: re-learn the neutral face
+  S.base = null; S.baseAcc = null; D.mm = 0;
+}
+$("camSel").onchange = e => openCamera(e.target.value).catch(err => logEvent("CAMERA ERROR: " + err.message));
+
+function pump() {
+  if (video.readyState >= 2 && video.currentTime !== lastFrameT) {
+    lastFrameT = video.currentTime;
+    try {
+      const res = faceLm.detectForVideo(video, performance.now());
+      onResults({ image: video, lms: res.faceLandmarks && res.faceLandmarks[0] });
+    } catch (err) { console.warn("tracker:", err); }
+  }
+  requestAnimationFrame(pump);
+}
+
+/* ------------------------------ bootstrap ------------------------------- */
+/* MediaPipe Tasks (one WASM runtime) serves both the 478-point face landmarker
+   (irises included) and the hair segmenter. */
+const TV = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.3";
+const MODELS = "https://storage.googleapis.com/mediapipe-models/";
+let vision = null, visionFiles = null, faceLm = null;
+async function start() {
+  vision = await import(TV + "/vision_bundle.mjs");
+  visionFiles = await vision.FilesetResolver.forVisionTasks(TV + "/wasm");
+  const opts = delegate => ({
+    baseOptions: { modelAssetPath: MODELS + "face_landmarker/face_landmarker/float16/latest/face_landmarker.task", delegate },
+    runningMode: "VIDEO", numFaces: 1, minFaceDetectionConfidence: 0.6, minFacePresenceConfidence: 0.6, minTrackingConfidence: 0.6,
   });
-  await cam.start();
+  try { faceLm = await vision.FaceLandmarker.createFromOptions(visionFiles, opts("GPU")); }
+  catch (e) { faceLm = await vision.FaceLandmarker.createFromOptions(visionFiles, opts("CPU")); }
+  await openCamera();
   S.running = true;
   $("boot").classList.add("hidden");
+  pump();
   startWear();
+  startHair();
 }
 $("bStart").onclick = async () => {
-  $("bootMsg").textContent = "Requesting camera…";
+  $("bootMsg").textContent = "Loading tracker and requesting camera…";
   try { await start(); }
   catch (err) { $("bootMsg").innerHTML = `<span class="err">Camera unavailable: ${String((err && err.message) || err)}</span>`; }
 };

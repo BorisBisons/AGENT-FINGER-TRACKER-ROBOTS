@@ -7,3 +7,7 @@
 - **Give terminal commands as one paste-able line** (joined with `&&`) — separate blocks got pasted
   together and broke.
 - **Don't assume Node is installed** on Boris's Mac; `python3 -m http.server` works there.
+- **Two MediaPipe generations cannot share a page.** The legacy `@mediapipe/face_mesh` and
+  `@mediapipe/tasks-vision` both claim the global WASM `Module`; use Tasks for everything.
+- **Check model variants before shipping.** The 8-bit quantised MobileCLIP vision model gave wrong
+  labels; fp16 matched full precision.

@@ -12,6 +12,7 @@ const GROUPS = [
   { key: "head", opts: [["CAP", "a photo of a person wearing a baseball cap"], ["BEANIE", "a photo of a person wearing a beanie"], ["HAT", "a photo of a person wearing a hat with a brim"], ["HOOD", "a photo of a person with a hood pulled over their head"], ["HEADSCARF", "a photo of a person wearing a headscarf"], [null, "a photo of a person with a bare head and nothing on it"]] },
   { key: "ears", opts: [["HEADPHONES", "a photo of a person wearing over-ear headphones"], ["EARBUDS", "a photo of a person with wireless earbuds in their ears"], [null, "a photo of a person with nothing on their ears"]] },
   { key: "mask", opts: [["FACE MASK", "a photo of a person wearing a face mask over the nose and mouth"], [null, "a photo of a person with an uncovered nose and mouth"]] },
+  { key: "tongue", opts: [["TONGUE OUT", "a photo of a person sticking their tongue out"], [null, "a photo of a person with their mouth closed"], [null, "a photo of a person smiling with teeth showing"]] },
   { key: "hair", opts: [["BEARD", "a photo of a person with a beard"], ["MUSTACHE", "a photo of a person with a mustache and no beard"], [null, "a photo of a person with a clean-shaven face"]] },
 ];
 const NULLS = ["a photo of a person", "a close-up photo of a face", "a portrait of a person looking at the camera"];
